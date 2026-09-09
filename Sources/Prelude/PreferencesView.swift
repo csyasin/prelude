@@ -4,20 +4,11 @@ import PreludeCore
 
 struct PreferencesView: View {
     @ObservedObject var model: AppModel
+    @AppStorage(ThemeColor.preferenceKey) private var accentHex = ThemeColor.defaultHex
     @State private var errorMessage: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("偏好设置")
-                    .font(.system(size: 22, weight: .semibold))
-                Text("设置 Prelude 在任意 App 中使用的激活快捷键。")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-            }
-
-            Divider()
-
             HStack(alignment: .center, spacing: 18) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("激活快捷键")
@@ -46,10 +37,56 @@ struct PreferencesView: View {
                 .disabled(!model.usesCustomHotkey)
             }
 
+            Divider()
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("主题色")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("用于按键、高亮路径和状态提示，自动保存。")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    ColorPicker("自定义", selection: Binding(
+                        get: { ThemeColor.color(accentHex) },
+                        set: { if let hex = ThemeColor.hex($0) { accentHex = hex } }
+                    ), supportsOpacity: false)
+                    .fixedSize()
+                }
+                HStack(spacing: 10) {
+                    ForEach(ThemeColor.presets, id: \.hex) { preset in
+                        Button { accentHex = preset.hex } label: {
+                            Circle()
+                                .fill(ThemeColor.color(preset.hex))
+                                .frame(width: 24, height: 24)
+                                .overlay {
+                                    if accentHex == preset.hex {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(ThemeColor.keyInk(preset.hex))
+                                    }
+                                }
+                                .padding(3)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(preset.name)
+                        .accessibilityLabel(preset.name)
+                        .accessibilityAddTraits(accentHex == preset.hex ? .isSelected : [])
+                    }
+                    Spacer()
+                    Button("恢复默认") { accentHex = ThemeColor.defaultHex }
+                        .disabled(accentHex == ThemeColor.defaultHex)
+                        .accessibilityLabel("恢复默认主题色")
+                }
+            }
+
             Spacer(minLength: 0)
         }
         .padding(24)
-        .frame(width: 500, height: 220)
+        .frame(width: 500, height: 260)
         .alert("无法设置快捷键", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }

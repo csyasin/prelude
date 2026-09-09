@@ -2,6 +2,15 @@ import AppKit
 import SwiftUI
 import PreludeCore
 
+struct IslandScreenMetrics: Equatable {
+    var notchWidth: CGFloat
+    var notchDepth: CGFloat
+    var maximumWidth: CGFloat
+    var hasNotch: Bool = false
+
+    static let fallback = IslandScreenMetrics(notchWidth: 96, notchDepth: 12, maximumWidth: 560)
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var config: Configuration?
@@ -11,7 +20,10 @@ final class AppModel: ObservableObject {
     @Published var hotkeyError: String?
     @Published var active = false
     @Published var completing = false
+    @Published var completionLabel: String?
     @Published var invalidCount = 0
+    @Published var islandMetrics = IslandScreenMetrics.fallback
+    @Published private(set) var presentationID = 0
     @Published private(set) var activationHotkey = Leader()
     @Published private(set) var usesCustomHotkey = false
     let configURL: URL
@@ -141,16 +153,25 @@ final class AppModel: ObservableObject {
         }
     }
     func toggle() { active ? dismiss() : activate() }
+    func beginPresentation() { presentationID += 1 }
     func activate() {
-        navigator.reset(); path = []; completing = false
+        navigator.reset(); path = []; completing = false; completionLabel = nil
         message = "输入按键，沿路径前往"
         active = true
         overlays.show()
     }
     func dismiss() {
         guard active else { return }
-        active = false; completing = false
+        active = false
         overlays.hide()
+        if completing {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(180))
+                guard let self, !self.active else { return }
+                self.completing = false
+                self.completionLabel = nil
+            }
+        }
     }
     private func handle(_ event: NSEvent) {
         let shortcutModifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
@@ -189,15 +210,21 @@ final class AppModel: ObservableObject {
             switch result {
             case .invalid: invalidCount += 1; message = "此路径没有 “\(key)” · 退格返回上一级"
             case .branch: message = "继续输入下一级按键"
-            case .action(let binding): completing = true; message = "\(preview ? "预览" : "执行") · \(binding.label)"
+            case .action(let binding):
+                completing = true
+                completionLabel = binding.label
+                message = "\(preview ? "预览" : "执行") · \(binding.label)"
             }
         }
         if case .action(let binding) = result {
-            active = false
-            // Release key focus synchronously; visual fade never gates execution.
-            overlays.hide()
-            completing = false
             if !preview { runner.run(binding) }
+            let completedPresentation = presentationID
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, self.active, self.completing,
+                      self.presentationID == completedPresentation else { return }
+                self.dismiss()
+            }
         }
     }
     func openConfig() {

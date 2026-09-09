@@ -1,10 +1,10 @@
-# Prelude 0.3
+# Prelude 0.4
 
-原生 macOS Leader 键启动器。配置为无扩展名的 **`~/.config/prelude/preluderc`**，不使用 TOML。按键图保持完整展开，使用公共主干与大圆角连接线。
+原生 macOS Leader 键启动器。配置为无扩展名的 **`~/.config/prelude/preluderc`**，不使用 TOML。激活后，Prelude 从 Mac 刘海或屏幕顶部展开为灵动岛，只显示当前路径和下一步可用按键。
 
 ## 使用
 
-双击 `dist/Prelude.app`。默认 **Control + Space** 激活，连续输入按键选择动作；退格返回上一级，在顶层继续退格会取消激活，Esc 可随时退出。所有动作通过 `/bin/zsh -f -c` 执行，不等待动画。菜单栏丝带环图标提供偏好设置、重载和退出；“偏好设置…”绑定 **Command + ,**，Prelude 激活时也可直接使用。
+双击 `dist/Prelude.app`。默认 **Control + Space** 激活，连续输入按键选择动作；退格返回上一级，在顶层继续退格会取消激活，Esc 可随时退出。可用按键按纵向列表显示，超过 6 项时均衡拆成两列；选中项会迁移为顶部路径。所有动作通过 `/bin/zsh -f -c` 立即执行，完成反馈独立收回。菜单栏丝带环图标提供偏好设置、重载和退出；“偏好设置…”绑定 **Command + ,**，Prelude 激活时也可直接使用。
 
 App 图标与菜单栏图标使用同一套 Prelude 丝带环标志。
 
@@ -66,7 +66,7 @@ p - 系统设置 : open -b com.apple.systempreferences
 
 ## 保存和执行
 
-保存后自动重载；正在导航时暂时保留本次树，退出后采用新配置。语法错误包含行号，保留上次有效配置。支持 UTF-8、BOM、LF/CRLF。
+保存后自动重载；正在导航时暂时保留本次路径，退出后采用新配置。语法错误包含行号，保留上次有效配置。支持 UTF-8、BOM、LF/CRLF。
 
 脚本工作目录为用户主目录，PATH 包含 `/opt/homebrew/bin`、`/usr/local/bin` 和进程原有路径。为避免启动延迟不读取用户 `.zprofile` / `.zshrc`；需要环境时显式 source。输出默认丢弃，非零退出码会提示；调试可重定向到自己的日志。脚本需要的系统权限由 macOS 提示。
 
@@ -95,6 +95,6 @@ open dist/Prelude.app
 
 Xcode 打开 `Package.swift`。`--check-config /path/preluderc` 仅校验后退出；`--config /path/preluderc` 使用独立配置；`--preview` 不注册全局键也不执行动作。
 
-主要源码：`PreludeRC.swift` 解析 DSL；`Configuration.swift` 构造树和导航索引；`BranchRouting.swift` 生成公共主干；`TreeView.swift` 绘制；`AppModel.swift` 管理输入/重载；`ActionRunner.swift` 执行 shell。
+主要源码：`PreludeRC.swift` 解析 DSL；`Configuration.swift` 构造树和导航索引；`IslandView.swift` 绘制灵动岛和纵向按键列表；`OverlayController.swift` 负责刘海检测与顶部定位；`AppModel.swift` 管理输入/重载；`ActionRunner.swift` 执行 shell。
 
 本地 ad-hoc 签名，无 Developer ID 公证、自动更新、开机自启。具体验证范围见 VALIDATION.md。
