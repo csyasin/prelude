@@ -1,0 +1,25 @@
+# Prelude · @ 分组，@@ 子分组，# 独占一行写注释。
+
+@ a - 应用
+
+s - Safari : open -b com.apple.Safari
+t - 终端 : open -b com.apple.Terminal
+f - 访达 : open -b com.apple.finder
+n - 备忘录 : open -b com.apple.Notes
+
+@ g - 前往
+
+h - GitHub : open https://github.com
+d - 下载 : open "$HOME/Downloads"
+c - 编辑配置 : open -t "$HOME/.config/prelude/preluderc"
+
+@ s - 系统
+
+
+@@ c - 截屏
+
+a - 截取全屏 : osascript -e 'tell application "System Events" to key code 20 using {command down, shift down}'
+s - 选择区域 : osascript -e 'tell application "System Events" to key code 21 using {command down, shift down}'
+
+@ s
+p - 系统设置 : open -b com.apple.systempreferences
