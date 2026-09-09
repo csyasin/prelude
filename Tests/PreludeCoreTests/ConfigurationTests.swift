@@ -60,12 +60,10 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertThrowsError(try Configuration.parse("a - leaf : true\n@ a - group"))
         XCTAssertThrowsError(try Configuration.parse("a - leaf : true\na - duplicate : true"))
     }
-    func testLeaderAndBOMWindowsLineEndings() throws {
-        XCTAssertEqual(try Configuration.parse("\u{FEFF}# c\r\n!leader option+space\r\na - test : true\r\n").hotkey, Leader(key:"space",modifiers:["option"]))
-        XCTAssertEqual(try Configuration.parse("!leader f12\na - test : true").hotkey.key,"f12")
-        XCTAssertThrowsError(try Configuration.parse("!leader space\na - test : true"))
-        XCTAssertThrowsError(try Configuration.parse("!leader ctrl+space\na - test : true"))
-        XCTAssertThrowsError(try Configuration.parse("!leader f12\n!leader f11\na - test : true"))
+    func testBOMWindowsLineEndingsAndLeaderIsNotConfiguration() throws {
+        let config = try Configuration.parse("\u{FEFF}# c\r\na - test : true\r\n")
+        XCTAssertEqual(config.bindings.map(\.sequence), [["a"]])
+        XCTAssertThrowsError(try Configuration.parse("!leader option+space\na - test : true"))
     }
     func testRapidNavigationInvalidKeyAndBack() throws {
         let c = try Configuration.parse(sample)

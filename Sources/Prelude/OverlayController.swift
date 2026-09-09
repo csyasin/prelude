@@ -2,8 +2,18 @@ import AppKit
 import SwiftUI
 
 final class KeyPanel: NSPanel {
+    var onShowPreferences: (() -> Void)?
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if event.type == .keyDown, event.keyCode == 43, modifiers == .command {
+            onShowPreferences?()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 }
 
 @MainActor
@@ -25,6 +35,10 @@ final class OverlayController {
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             panel.hidesOnDeactivate = false; panel.isReleasedWhenClosed = false
             panel.contentView = NSHostingView(rootView: TreeView(model: model))
+            panel.onShowPreferences = { [weak model = self.model] in
+                model?.dismiss()
+                model?.onShowPreferences?()
+            }
             self.panel = panel
         }
         if displays != NSScreen.screens.map(\.frame) {

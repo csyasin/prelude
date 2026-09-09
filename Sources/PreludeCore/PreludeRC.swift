@@ -12,11 +12,9 @@ enum PreludeRC {
             self.key = key; self.name = name; self.line = line; self.script = script
         }
     }
-    static func parse(_ text: String) throws -> (tree: [KeyNode], leader: Leader) {
+    static func parse(_ text: String) throws -> [KeyNode] {
         let root = Draft(key: "", name: "root", line: 1)
         var context: [Draft] = []
-        var leader = Leader()
-        var hasLeader = false
         func failure(_ line: Int, _ message: String) -> ConfigError { ConfigError("第 \(line) 行：\(message)") }
         func trim(_ text: String) -> String { text.trimmingCharacters(in: .whitespaces) }
         func keyAndRest(_ source: String, line: Int) throws -> (String, String) {
@@ -35,16 +33,8 @@ enum PreludeRC {
             let source = index == 0 && raw.hasPrefix("\u{FEFF}") ? String(raw.dropFirst()) : raw
             let content = source.drop(while: { $0 == " " || $0 == "\t" })
             if content.isEmpty || content.hasPrefix("#") { continue }
-            if content.hasPrefix("!leader ") {
-                guard !hasLeader else { throw failure(line, "!leader 只能定义一次。") }
-                let parts = trim(String(content.dropFirst(8))).split(separator: "+", omittingEmptySubsequences: false).map { trim(String($0)).lowercased() }
-                guard let key = parts.last, KeyNames.codes[key] != nil else { throw failure(line, "无效的激活键。") }
-                let modifiers = Array(parts.dropLast())
-                guard Set(modifiers).count == modifiers.count, modifiers.allSatisfy({ ["control", "option", "shift", "command"].contains($0) }), !modifiers.isEmpty || (1...20).contains(where: { key == "f\($0)" }) else {
-                    throw failure(line, "激活键示例：!leader control+space 或 !leader f12。")
-                }
-                leader = Leader(key: key, modifiers: modifiers); hasLeader = true
-                continue
+            if content.hasPrefix("!leader") {
+                throw failure(line, "激活快捷键请在 Prelude 偏好设置中管理；preluderc 只配置按键序列。")
             }
             if content.hasPrefix("@") {
                 let depth = content.prefix(while: { $0 == "@" }).count
@@ -93,6 +83,6 @@ enum PreludeRC {
             return KeyNode(path: path, label: node.name, binding: nil, children: try node.children.map { try freeze($0, prefix: path) })
         }
         guard !root.children.isEmpty else { throw failure(1, "至少需要一个动作。") }
-        return (try root.children.map { try freeze($0, prefix: []) }, leader)
+        return try root.children.map { try freeze($0, prefix: []) }
     }
 }

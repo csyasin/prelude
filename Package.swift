@@ -8,9 +8,7 @@ let package = Package(
         .target(name: "PreludeCore"),
         .executableTarget(name: "Prelude", dependencies: ["PreludeCore"], resources: [
             .copy("Resources/preluderc"),
-            .copy("Resources/PreludeMenuTemplate.png"),
-            .copy("Resources/PreludeMenuOrbit.png"),
-            .copy("Resources/PreludeMenuPanels.png")
+            .copy("Resources/PreludeMenuTemplate.png")
         ]),
         .testTarget(name: "PreludeCoreTests", dependencies: ["PreludeCore"])
     ]

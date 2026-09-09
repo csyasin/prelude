@@ -8,9 +8,12 @@ final class AppModel: ObservableObject {
     @Published var path: [String] = []
     @Published var message = "输入按键，沿路径前往"
     @Published var configError: String?
+    @Published var hotkeyError: String?
     @Published var active = false
     @Published var completing = false
     @Published var invalidCount = 0
+    @Published private(set) var activationHotkey = Leader()
+    @Published private(set) var usesCustomHotkey = false
     let configURL: URL
     let hotkey = GlobalHotkey()
     let runner = ActionRunner()
@@ -26,6 +29,7 @@ final class AppModel: ObservableObject {
     private var sleepObserver: NSObjectProtocol?
     private var deferredReload = false
     private let preview: Bool
+    var onShowPreferences: (() -> Void)?
 
     init() {
         preview = CommandLine.arguments.contains("--preview")
@@ -41,6 +45,7 @@ final class AppModel: ObservableObject {
         runner.onError = { [weak self] error in self?.showError(error) }
     }
     func start() {
+        configureHotkey()
         do {
             if !FileManager.default.fileExists(atPath: configURL.path) {
                 try FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -69,6 +74,32 @@ final class AppModel: ObservableObject {
             Task { @MainActor in self?.dismiss() }
         }
         if preview { activate() }
+    }
+    private func configureHotkey() {
+        let preferred = HotkeyPreference.load()
+        let selected = preferred ?? Leader()
+        activationHotkey = selected
+        usesCustomHotkey = preferred != nil
+        guard !preview else { return }
+        do {
+            try hotkey.register(selected)
+            hotkeyError = nil
+        } catch {
+            guard preferred != nil else {
+                hotkeyError = error.localizedDescription
+                return
+            }
+            do {
+                let fallback = Leader()
+                try hotkey.register(fallback)
+                HotkeyPreference.clear()
+                activationHotkey = fallback
+                usesCustomHotkey = false
+                hotkeyError = "自定义快捷键不可用，已恢复默认值：\(error.localizedDescription)"
+            } catch {
+                hotkeyError = error.localizedDescription
+            }
+        }
     }
     func reload(force: Bool = false, synchronous: Bool = false) {
         guard !reading else { return }
@@ -102,11 +133,12 @@ final class AppModel: ObservableObject {
         guard let result else { return }
         do {
             let candidate = try result.get()
-            if !preview { try hotkey.register(candidate.hotkey) }
             config = candidate
             configError = nil
             overlays.prepare()
-        } catch { configError = error.localizedDescription }
+        } catch {
+            configError = error.localizedDescription
+        }
     }
     func toggle() { active ? dismiss() : activate() }
     func activate() {
@@ -121,9 +153,19 @@ final class AppModel: ObservableObject {
         overlays.hide()
     }
     private func handle(_ event: NSEvent) {
+        let shortcutModifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if event.keyCode == 43, shortcutModifiers == .command {
+            dismiss()
+            onShowPreferences?()
+            return
+        }
         if event.keyCode == 53 { dismiss(); return }
         guard !completing else { return }
         if event.keyCode == 51 || event.keyCode == 117 {
+            if navigator.path.isEmpty {
+                dismiss()
+                return
+            }
             navigator.back()
             path = navigator.path; message = "输入按键，沿路径前往"
             return
@@ -131,7 +173,7 @@ final class AppModel: ObservableObject {
         guard !event.isARepeat else { return }
         // Accept rapid sequences even before the leader modifiers have been released.
         let modifiers = event.modifierFlags.intersection([.command, .control, .option])
-        let allowed = (config?.hotkey.modifiers ?? []).reduce(NSEvent.ModifierFlags()) {
+        let allowed = activationHotkey.modifiers.reduce(NSEvent.ModifierFlags()) {
             $0.union(["command": NSEvent.ModifierFlags.command, "control": .control, "option": .option, "shift": .shift][$1] ?? [])
         }
         guard modifiers.subtracting(allowed).isEmpty else { return }
@@ -161,6 +203,30 @@ final class AppModel: ObservableObject {
     func openConfig() {
         dismiss()
         NSWorkspace.shared.open([configURL], withApplicationAt: URL(fileURLWithPath: "/System/Applications/TextEdit.app"), configuration: NSWorkspace.OpenConfiguration())
+    }
+    func setActivationHotkey(_ leader: Leader) throws {
+        guard KeyNames.codes[leader.key] != nil,
+              Set(leader.modifiers).count == leader.modifiers.count,
+              leader.modifiers.allSatisfy({ ["control", "option", "shift", "command"].contains($0) }),
+              !leader.modifiers.isEmpty || leader.isFunctionKey else {
+            throw ConfigError("普通按键至少需要一个修饰键；F1–F20 可以单独使用。")
+        }
+        guard !(leader.key == "," && leader.modifiers == ["command"]) else {
+            throw ConfigError("⌘, 已保留用于打开偏好设置，请选择其他激活快捷键。")
+        }
+        if !preview { try hotkey.register(leader) }
+        HotkeyPreference.save(leader)
+        activationHotkey = leader
+        usesCustomHotkey = true
+        hotkeyError = nil
+    }
+    func resetActivationHotkey() throws {
+        let fallback = Leader()
+        if !preview { try hotkey.register(fallback) }
+        HotkeyPreference.clear()
+        activationHotkey = fallback
+        usesCustomHotkey = false
+        hotkeyError = nil
     }
     func showError(_ text: String) {
         let alert = NSAlert()

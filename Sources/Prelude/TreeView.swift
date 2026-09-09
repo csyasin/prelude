@@ -26,7 +26,7 @@ struct TreeView: View {
                     Text("Prelude").font(.system(size: 29, weight: .medium, design: .serif)).tracking(-0.5)
                 }
                 Spacer()
-                Text(model.config?.hotkey.display ?? "⌃ Space").font(.system(size: 12, design: .monospaced)).foregroundStyle(.white.opacity(0.5))
+                Text(model.activationHotkey.display).font(.system(size: 12, design: .monospaced)).foregroundStyle(.white.opacity(0.5))
             }
             HStack(spacing: 8) {
                 Text("完整按键图").foregroundStyle(.white.opacity(0.5))
@@ -90,7 +90,7 @@ struct TreeView: View {
                 Image(systemName: model.completing ? "checkmark" : "arrow.turn.down.right").foregroundStyle(accent)
                 Text(model.message).lineLimit(1)
                 Spacer()
-                Text("⌫ 返回").foregroundStyle(.white.opacity(0.35))
+                Text("⌫ 返回 · 顶层退出").foregroundStyle(.white.opacity(0.35))
                 Text("esc 退出").foregroundStyle(.white.opacity(0.35)).padding(.leading, 8)
             }.font(.system(size: 11)).foregroundStyle(.white.opacity(0.6)).padding(.top, 16)
         }
