@@ -7,6 +7,7 @@ struct IslandScreenMetrics: Equatable {
     var notchDepth: CGFloat
     var maximumWidth: CGFloat
     var hasNotch: Bool = false
+    var maximumToastWidth: CGFloat = 560
 
     static let fallback = IslandScreenMetrics(notchWidth: 96, notchDepth: 12, maximumWidth: 560)
 }
@@ -20,7 +21,7 @@ final class AppModel: ObservableObject {
     @Published var hotkeyError: String?
     @Published var active = false
     @Published var completing = false
-    @Published var completionLabel: String?
+    @Published var toast: ToastRequest?
     @Published var invalidCount = 0
     @Published var islandMetrics = IslandScreenMetrics.fallback
     @Published private(set) var presentationID = 0
@@ -39,6 +40,7 @@ final class AppModel: ObservableObject {
     private var externalClickMonitor: Any?
     private var screenObserver: NSObjectProtocol?
     private var sleepObserver: NSObjectProtocol?
+    private var pendingToast: ToastRequest?
     private var deferredReload = false
     private let preview: Bool
     var onShowPreferences: (() -> Void)?
@@ -71,13 +73,16 @@ final class AppModel: ObservableObject {
             Task { @MainActor in self?.reload() }
         }
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self, self.active else { return event }
+            guard let self, self.active, !self.completing else { return event }
             if event.type != .keyDown { return event }
             self.handle(event)
             return nil
         }
         externalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            Task { @MainActor in self?.dismiss() }
+            Task { @MainActor in
+                guard let self, !self.completing else { return }
+                self.dismiss()
+            }
         }
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.dismiss() }
@@ -152,10 +157,10 @@ final class AppModel: ObservableObject {
             configError = error.localizedDescription
         }
     }
-    func toggle() { active ? dismiss() : activate() }
+    func toggle() { active && !completing ? dismiss() : activate() }
     func beginPresentation() { presentationID += 1 }
     func activate() {
-        navigator.reset(); path = []; completing = false; completionLabel = nil
+        navigator.reset(); path = []; completing = false; toast = nil
         message = "输入按键，沿路径前往"
         active = true
         overlays.show()
@@ -169,7 +174,7 @@ final class AppModel: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(180))
                 guard let self, !self.active else { return }
                 self.completing = false
-                self.completionLabel = nil
+                self.toast = nil
             }
         }
     }
@@ -211,20 +216,44 @@ final class AppModel: ObservableObject {
             case .invalid: invalidCount += 1; message = "此路径没有 “\(key)” · 退格返回上一级"
             case .branch: message = "继续输入下一级按键"
             case .action(let binding):
-                completing = true
-                completionLabel = binding.label
                 message = "\(preview ? "预览" : "执行") · \(binding.label)"
             }
         }
         if case .action(let binding) = result {
+            // The final navigation key is consumed, but subsequent typing belongs
+            // to the underlying app while the one-second confirmation is visible.
+            showToast(ToastRequest(message: binding.label, type: .success), replacingNavigation: true)
             if !preview { runner.run(binding) }
-            let completedPresentation = presentationID
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(1))
-                guard let self, self.active, self.completing,
-                      self.presentationID == completedPresentation else { return }
-                self.dismiss()
-            }
+        }
+    }
+
+    func showToast(_ request: ToastRequest, replacingNavigation: Bool = false) {
+        // A notification must not take away an in-progress keyboard route.
+        guard replacingNavigation || !active || completing else {
+            pendingToast = request
+            return
+        }
+        if !replacingNavigation { pendingToast = nil }
+        completing = true
+        toast = request
+        active = true
+        overlays.showNotification()
+        dismissCompletion(after: request.duration)
+    }
+
+    func presentPendingToast() {
+        guard !active, let request = pendingToast else { return }
+        pendingToast = nil
+        showToast(request)
+    }
+
+    private func dismissCompletion(after seconds: Double) {
+        let completedPresentation = presentationID
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard let self, self.active, self.completing,
+                  self.presentationID == completedPresentation else { return }
+            self.dismiss()
         }
     }
     func openConfig() {
@@ -265,6 +294,7 @@ final class AppModel: ObservableObject {
         alert.runModal()
     }
     func stop() {
+        pendingToast = nil
         reloadTimer?.invalidate()
         if let monitor { NSEvent.removeMonitor(monitor) }
         if let externalClickMonitor { NSEvent.removeMonitor(externalClickMonitor) }

@@ -3,7 +3,8 @@ import SwiftUI
 
 final class KeyPanel: NSPanel {
     var onShowPreferences: (() -> Void)?
-    override var canBecomeKey: Bool { true }
+    var acceptsNavigationFocus = true
+    override var canBecomeKey: Bool { acceptsNavigationFocus }
     override var canBecomeMain: Bool { false }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -63,14 +64,19 @@ final class OverlayController {
         let hasNotch = screen.safeAreaInsets.top > 0 && !left.isEmpty && !right.isEmpty && notchGap > 40
         let notchWidth = hasNotch ? notchGap : 96
         let notchDepth = hasNotch ? screen.safeAreaInsets.top : 12
-        let width = min(680, max(340, screen.frame.width - 24))
+        let navigationWidth = min(680, max(340, screen.frame.width - 24))
+        let maximumToastWidth = screen.frame.width * 0.5
+        // The hosting window stays fixed throughout presentation; leave room for
+        // any toast up to half this display, including its shadow margins.
+        let width = max(navigationWidth, maximumToastWidth + 32)
         let height = min(520, max(320, screen.frame.height * 0.56))
         let top = hasNotch ? screen.frame.maxY : screen.visibleFrame.maxY - 8
         model.islandMetrics = IslandScreenMetrics(
             notchWidth: notchWidth,
             notchDepth: notchDepth,
-            maximumWidth: width - 32,
-            hasNotch: hasNotch
+            maximumWidth: navigationWidth - 32,
+            hasNotch: hasNotch,
+            maximumToastWidth: maximumToastWidth
         )
         panel?.setFrame(
             NSRect(x: (hasNotch ? (left.maxX + right.minX) / 2 : screen.frame.midX) - width / 2, y: top - height, width: width, height: height),
@@ -82,11 +88,29 @@ final class OverlayController {
         guard let panel else { return }
         // Opaque and key immediately: no entrance animation can swallow fast input.
         panel.alphaValue = 1
+        panel.acceptsNavigationFocus = true
         panel.makeKeyAndOrderFront(nil)
         model.beginPresentation()
     }
-    func hide() {
+    func showNotification() {
+        // Preserve the screen and anchor when morphing an existing presentation.
+        if panel?.isVisible != true { prepare() }
+        guard let panel else { return }
+        releaseKeyboardFocus()
+        panel.alphaValue = 1
+        panel.orderFrontRegardless()
+        model.beginPresentation()
+    }
+
+    /// Keep the completion visible without retaining the nonactivating panel's
+    /// keyboard focus. Do not activate an app here: the action may open another.
+    func releaseKeyboardFocus() {
         panel?.resignKey()
+        panel?.acceptsNavigationFocus = false
+    }
+
+    func hide() {
+        releaseKeyboardFocus()
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             panel?.orderOut(nil)
         }
@@ -97,5 +121,6 @@ final class OverlayController {
     func finishHiding(presentationID: Int) {
         guard !model.active, model.presentationID == presentationID else { return }
         panel?.orderOut(nil)
+        model.presentPendingToast()
     }
 }

@@ -83,6 +83,41 @@ python3 scripts/migrate_to_preluderc.py /path/old.toml /path/preluderc
 
 转换器不覆盖已存在的目标，不执行脚本。旧多行脚本通过 zsh 字符串包装，保留换行语义。含 DSL 保留按键或名称分隔符的旧节点会要求手动处理，不会静默丢弃。
 
+## URL 通知
+
+使用 `prelude://toast` 从脚本、快捷指令或其他应用显示灵动岛通知。应用未运行时会自动启动；先打开一次 `dist/Prelude.app`，让 macOS 注册 URL Scheme。命令行推荐 `open -g`，避免调用方主动切换前台应用。
+
+```sh
+# 成功图标，显示 2 秒
+open -g 'prelude://toast?message=Saved&duration=2&type=success'
+
+# 失败图标，显示 3 秒
+open -g 'prelude://toast?message=Build%20failed&duration=3&type=error'
+
+# 纯文本，无图标，默认显示 1 秒
+open -g 'prelude://toast?message=Copied'
+```
+
+| 参数 | 含义 |
+| --- | --- |
+| `message` | 必填，1–200 个字符；换行和连续空白合并为空格。通知内容左对齐；长消息自动加宽，最多占当前屏幕宽度的 50%，超出后换行完整显示。 |
+| `duration` | 可选，单位秒，默认 `1`，允许 `0.5`–`10`，支持小数。 |
+| `type` | 可选：`success`（对勾）、`error`（叉号）、`warning`（感叹号）、`info`（信息）；省略或 `type=` 时不显示图标及占位。 |
+
+成功图标使用独立绿色，失败、警告、信息分别使用红、橙、蓝色，不受主题色影响。参数值需要 URL 编码，尤其是中文、空格、`&`、`#`、`%`。例如在 Python 中生成并发送：
+
+```python
+from urllib.parse import urlencode, quote
+import subprocess
+
+query = urlencode({"message": "文件已保存", "duration": 2, "type": "success"}, quote_via=quote)
+subprocess.run(["open", "-g", "prelude://toast?" + query], check=True)
+```
+
+通知不获取键盘焦点。连续通知更新为最新内容并重新计时；按键导航期间暂存最新通知，退出后显示。无效 URL 被忽略并写入系统日志，不弹错误窗口。URL 只接收消息参数，不执行命令或访问消息中的路径。
+
+动作触发后的名称提示直接复用内部 `showToast(ToastRequest(...))`，使用成功图标、1 秒停留时间，沿用此前的触发反馈语义（不代表脚本已退出）。内部调用不经过 URL 或 `open`。
+
 ## 开发
 
 macOS 14+，Xcode / Swift 5.9+，当前构建为 Apple Silicon。应用本身没有第三方包依赖，已移除 TOMLKit。

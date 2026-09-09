@@ -48,6 +48,8 @@ private struct PreferencesSceneView: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: AppModel!
     private var status: NSStatusItem!
+    private var pendingURLs: [URL] = []
+    private var receivedURL = false
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         model = AppModel()
@@ -66,8 +68,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         addItem(to: menu, title: "退出 Prelude", action: #selector(quit), key: "q")
         status.menu = menu
         model.start()
-        if !model.active { model.activate() }
+        let urls = pendingURLs
+        pendingURLs.removeAll()
+        urls.forEach(receiveURL)
+        // A URL launch must not briefly display the navigation panel or take key
+        // focus before its notification. Ordinary Finder launches keep their UI.
+        let defaultLaunch = notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool ?? false
+        if defaultLaunch && !receivedURL && !model.active { model.activate() }
     }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        receivedURL = true
+        guard model != nil else { pendingURLs.append(contentsOf: urls); return }
+        urls.forEach(receiveURL)
+    }
+
+    private func receiveURL(_ url: URL) {
+        do { model.showToast(try ToastRequest(url: url)) }
+        catch { NSLog("Prelude toast: %@", error.localizedDescription) }
+    }
+
     private func addItem(to menu: NSMenu, title: String, action: Selector, key: String = "") {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.target = self

@@ -93,17 +93,23 @@ struct IslandView: View {
         columns.map(\.count).max() ?? 0
     }
 
+    private var toastLayout: ToastLayout {
+        ToastLayout.measure(message: model.toast?.message ?? "", hasIcon: model.toast?.type != nil,
+                            minimumWidth: max(270, model.islandMetrics.notchWidth),
+                            maximumWidth: model.islandMetrics.maximumToastWidth,
+                            horizontalPadding: model.islandMetrics.hasNotch ? 26 : 22)
+    }
+
     private var targetWidth: CGFloat {
+        if model.completing { return toastLayout.width }
         let raw: CGFloat
-        if model.completing { raw = 270 }
-        else if model.configError != nil { raw = 430 }
+        if model.configError != nil { raw = 430 }
         else { raw = columns.count == 1 ? 340 : 560 }
         return max(model.islandMetrics.notchWidth, min(raw, model.islandMetrics.maximumWidth))
     }
 
     private var targetHeight: CGFloat {
-        // Completion is one 32pt row; do not reserve the removed subtitle's space.
-        if model.completing { return contentTopInset + 32 + 12 }
+        if model.completing { return contentTopInset + toastLayout.contentHeight + 12 }
         let contentHeight: CGFloat
         if model.configError != nil { contentHeight = 122 }
         else { contentHeight = 57 + CGFloat(rowCount) * 37 + 13 }
@@ -312,23 +318,36 @@ struct IslandView: View {
         }
     }
 
+    private var toastIcon: (symbol: String, color: Color, label: String)? {
+        switch model.toast?.type {
+        case .success: return ("checkmark", .green, "成功")
+        case .error: return ("xmark", .red, "失败")
+        case .warning: return ("exclamationmark", .orange, "警告")
+        case .info: return ("info", .blue, "信息")
+        case nil: return nil
+        }
+    }
+
     private var completionContent: some View {
         HStack(spacing: 11) {
-            ZStack {
-                Circle().fill(islandAccent.opacity(0.13)).frame(width: 32, height: 32)
-                Image(systemName: "checkmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(islandAccent)
+            if let icon = toastIcon {
+                ZStack {
+                    Circle().fill(icon.color.opacity(0.13)).frame(width: 32, height: 32)
+                    Image(systemName: icon.symbol)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(icon.color)
+                }
             }
-            Text(model.completionLabel ?? "已执行")
+            Text(model.toast?.message ?? "")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.9))
-                .lineLimit(1)
-            Spacer(minLength: 0)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: toastLayout.textWidth, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(model.completionLabel ?? "动作")，已执行")
+        .accessibilityLabel([toastIcon?.label, model.toast?.message].compactMap { $0 }.joined(separator: "，"))
     }
 
     private func errorContent(_ error: String) -> some View {
