@@ -60,12 +60,12 @@ private struct IslandShake: GeometryEffect {
     }
 }
 
+
 struct IslandView: View {
     @ObservedObject var model: AppModel
     @AppStorage(ThemeColor.preferenceKey) private var accentHex = ThemeColor.defaultHex
     private var islandAccent: Color { ThemeColor.color(accentHex) }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Namespace private var routeNamespace
     @State private var shake: CGFloat = 0
     @State private var expanded = false
     @State private var contentVisible = false
@@ -78,9 +78,10 @@ struct IslandView: View {
         return config.nodesByPath[model.path]?.children ?? []
     }
 
-    private var currentNode: KeyNode? {
-        guard !model.path.isEmpty else { return nil }
-        return model.config?.nodesByPath[model.path]
+    private var routeLabels: [String] {
+        model.path.indices.map { index in
+            model.config?.nodesByPath[Array(model.path.prefix(index + 1))]?.label ?? model.path[index]
+        }
     }
 
     private var columns: [[KeyNode]] {
@@ -97,7 +98,7 @@ struct IslandView: View {
         ToastLayout.measure(message: model.toast?.message ?? "", hasIcon: model.toast?.type != nil,
                             minimumWidth: max(270, model.islandMetrics.notchWidth),
                             maximumWidth: model.islandMetrics.maximumToastWidth,
-                            horizontalPadding: model.islandMetrics.hasNotch ? 26 : 22)
+                            horizontalPadding: horizontalContentPadding)
     }
 
     private var targetWidth: CGFloat {
@@ -109,11 +110,32 @@ struct IslandView: View {
     }
 
     private var targetHeight: CGFloat {
-        if model.completing { return contentTopInset + toastLayout.contentHeight + 12 }
-        let contentHeight: CGFloat
-        if model.configError != nil { contentHeight = 122 }
-        else { contentHeight = 57 + CGFloat(rowCount) * 37 + 13 }
-        return contentTopInset + contentHeight + 8
+        if model.completing { return contentTopInset + toastLayout.contentHeight + visibleSidePadding }
+        if model.configError != nil { return contentTopInset + 122 + 8 }
+        // 24pt path, 7pt gap, 1pt divider, 7pt gap. Root has no header.
+        let headerHeight: CGFloat = model.path.isEmpty ? 0 : 39
+        return contentTopInset + headerHeight + CGFloat(rowCount) * 37 + navigationBottomPadding
+    }
+
+    private var horizontalContentPadding: CGFloat {
+        let base: CGFloat = model.islandMetrics.hasNotch ? 26 : 22
+        return model.completing || model.configError == nil ? base + 8 : base
+    }
+
+    private var visibleSidePadding: CGFloat {
+        horizontalContentPadding - (model.islandMetrics.hasNotch ? 14 : 0)
+    }
+
+    private var navigationBottomPadding: CGFloat {
+        // The attached shell is inset 14pt from its frame on each side. A 25pt
+        // key is centered in a 37pt row, already leaving 6pt below the last key.
+        // Match the visible key-to-edge gap, rather than just the frame padding.
+        return max(0, visibleSidePadding - 6)
+    }
+
+    private var bottomContentPadding: CGFloat {
+        if model.completing { return visibleSidePadding }
+        return model.configError == nil ? navigationBottomPadding : 20
     }
 
     private var contentTopInset: CGFloat {
@@ -152,6 +174,7 @@ struct IslandView: View {
         // size. A leaf-only animation moves to the destination left edge first,
         // then grows from there, briefly exposing the physical notch on the right.
         .animation(shellAnimation, value: layoutSize)
+        .animation(shellAnimation, value: model.path)
         .preferredColorScheme(.dark)
         .onChange(of: targetWidth) { _, _ in updateLayoutSize() }
         .onChange(of: targetHeight) { _, _ in updateLayoutSize() }
@@ -188,8 +211,8 @@ struct IslandView: View {
                     }
                 }
                 .padding(.top, contentTopInset)
-                .padding(.horizontal, model.islandMetrics.hasNotch ? 26 : 22)
-                .padding(.bottom, model.completing ? 12 : 20)
+                .padding(.horizontal, horizontalContentPadding)
+                .padding(.bottom, bottomContentPadding)
                 .frame(width: layoutSize.width, height: layoutSize.height, alignment: .top)
                 .opacity(contentVisible ? 1 : 0)
                 .offset(y: contentVisible || reduceMotion ? 0 : -4)
@@ -201,12 +224,30 @@ struct IslandView: View {
     }
 
     private var navigationContent: some View {
-        VStack(spacing: 7) {
-            routeHeader
-                .frame(height: 36)
-            Rectangle()
-                .fill(.white.opacity(0.075))
-                .frame(height: 1)
+        VStack(spacing: 0) {
+            ZStack(alignment: .topLeading) {
+                if !model.path.isEmpty {
+                    VStack(spacing: 0) {
+                        routeHeader
+                            .frame(height: 24)
+                            .padding(.bottom, 7)
+                        Rectangle()
+                            .fill(.white.opacity(0.065))
+                            .frame(height: 1)
+                            .padding(.bottom, 7)
+                    }
+                    // Lay out glyphs at their final width. Only the surrounding
+                    // opacity transition animates; head truncation cannot sweep
+                    // across the text as an inherited frame animation expands.
+                    .frame(width: max(0, targetWidth - horizontalContentPadding * 2), alignment: .leading)
+                    .transaction { $0.animation = nil }
+                    .id(model.path)
+                    .transition(.opacity.animation(reduceMotion ? nil : .easeInOut(duration: 0.16)))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: model.path.isEmpty ? 0 : 39, alignment: .top)
+            .accessibilityHidden(model.path.isEmpty)
             HStack(alignment: .top, spacing: 12) {
                 ForEach(Array(columns.enumerated()), id: \.offset) { columnIndex, column in
                     if columnIndex > 0 {
@@ -219,61 +260,67 @@ struct IslandView: View {
                         ForEach(Array(column.enumerated()), id: \.element.id) { rowIndex, node in
                             optionRow(node)
                                 .frame(height: 37)
-                                .transition(
-                                    .asymmetric(
-                                        insertion: .offset(y: -8).combined(with: .opacity),
-                                        removal: .offset(y: 8).combined(with: .opacity)
-                                    )
-                                )
-                                .animation(
-                                    reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.9)
-                                        .delay(Double(rowIndex) * 0.018),
-                                    value: model.path
-                                )
+
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .top)
                 }
             }
             .id(model.path.joined(separator: "\u{1F}"))
+            .transition(.opacity)
+
         }
     }
 
+    private struct RouteCrumb: Identifiable {
+        let id: String
+        let label: String
+        let isCurrent: Bool
+    }
+
     private var routeHeader: some View {
-        HStack(spacing: 9) {
-            if let currentNode {
-                if model.path.count > 1 {
-                    Text(model.path.dropLast().map { $0.uppercased() }.joined(separator: " / "))
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.38))
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.22))
-                }
-                routeIdentity(currentNode, compact: true)
-                    .matchedGeometryEffect(id: "route-\(currentNode.id)", in: routeNamespace)
-            } else {
-                Circle()
-                    .fill(islandAccent)
-                    .frame(width: 6, height: 6)
-                    .shadow(color: islandAccent.opacity(0.8), radius: 5)
-                Text("PRELUDE")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .tracking(1.4)
-                    .foregroundStyle(islandAccent)
-            }
-            Spacer(minLength: 8)
-            Text("\(options.count) KEYS")
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                .tracking(0.8)
-                .foregroundStyle(.white.opacity(0.26))
+        let labels = routeLabels
+        let fitted = BreadcrumbLayout.fit(labels: labels,
+            availableWidth: max(0, targetWidth - horizontalContentPadding * 2))
+        let crumbs = fitted.labels.enumerated().map { index, label in
+            let depth = fitted.omittedCount + index + 1
+            return RouteCrumb(id: model.path.prefix(depth).joined(separator: "\u{1F}"),
+                              label: label, isCurrent: depth == model.path.count)
         }
+        return HStack(spacing: 0) {
+            if fitted.omittedCount > 0 {
+                Text("…")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.42))
+            }
+            ForEach(crumbs) { crumb in
+                if fitted.omittedCount > 0 || crumb.id != crumbs.first?.id {
+                    routeSeparator
+                }
+                Text(crumb.label)
+                    .font(.system(size: 12, weight: crumb.isCurrent ? .semibold : .regular))
+                    .foregroundStyle(.white.opacity(crumb.isCurrent ? 0.65 : 0.38))
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .layoutPriority(crumb.isCurrent ? 1 : 0)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(labels.joined(separator: "，"))
+    }
+
+    private var routeSeparator: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(Color.gray)
+            .frame(width: BreadcrumbLayout.separatorWidth)
+            .padding(.horizontal, BreadcrumbLayout.separatorSpacing)
     }
 
     private func optionRow(_ node: KeyNode) -> some View {
         HStack(spacing: 10) {
-            routeIdentity(node, compact: false)
-                .matchedGeometryEffect(id: "route-\(node.id)", in: routeNamespace)
+            routeIdentity(node)
             Spacer(minLength: 4)
             Group {
                 if node.binding == nil {
@@ -293,19 +340,19 @@ struct IslandView: View {
         .accessibilityLabel("按 \(node.key)，\(node.label)")
     }
 
-    private func routeIdentity(_ node: KeyNode, compact: Bool) -> some View {
+    private func routeIdentity(_ node: KeyNode) -> some View {
         HStack(spacing: 9) {
             Text(node.key.uppercased())
-                .font(.system(size: compact ? 13 : 14, weight: .bold, design: .monospaced))
+                .font(.system(size: 14, weight: .bold, design: .monospaced))
                 .foregroundStyle(ThemeColor.keyInk(accentHex))
-                .frame(width: compact ? 23 : 25, height: compact ? 23 : 25)
+                .frame(width: 25, height: 25)
                 .background(RoundedRectangle(cornerRadius: 7).fill(islandAccent))
             Text(node.label)
-                .font(.system(size: compact ? 12 : 12.5, weight: compact ? .semibold : .regular))
-                .foregroundStyle(compact ? islandAccent : .white.opacity(0.82))
+                .font(.system(size: 12.5, weight: .regular))
+                .foregroundStyle(.white.opacity(0.82))
                 .lineLimit(1)
                 .truncationMode(.tail)
-            if !compact && node.binding == nil {
+            if node.binding == nil {
                 Text("\(node.children.count)")
                     .font(.system(size: 10, weight: .medium))
                     .monospacedDigit()
