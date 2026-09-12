@@ -174,10 +174,11 @@ struct PreferencesView: View {
                 VStack(spacing: 4) {
                     ForEach(0..<3) { _ in
                         HStack(spacing: 4) {
+                            RoundedRectangle(cornerRadius: 2).fill(accent).frame(width: 8, height: 8)
                             Capsule().fill(.white.opacity(0.7)).frame(width: 24, height: 3)
-                            RoundedRectangle(cornerRadius: 2).fill(accent).frame(width: 6, height: 6)
                         }
-                        .padding(6).background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 5))
+                        .padding(6)
+                        .background(Color(red: 0.13, green: 0.14, blue: 0.16), in: RoundedRectangle(cornerRadius: 5))
                     }
                 }
                 .padding(10)
