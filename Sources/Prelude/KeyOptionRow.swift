@@ -26,12 +26,12 @@ struct KeyOptionRow: View {
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("按 \(node.key)，\(node.label)")
+        .accessibilityLabel("按 \(node.keyAccessibilityLabel)，\(node.label)")
     }
 
     private func routeIdentity(_ node: KeyNode) -> some View {
         HStack(spacing: 9) {
-            Text(node.key.uppercased())
+            Text(node.keyDisplay)
                 .font(.system(size: 14, weight: .bold, design: .monospaced))
                 .foregroundStyle(ThemeColor.keyInk(accentHex))
                 .frame(width: 25, height: 25)

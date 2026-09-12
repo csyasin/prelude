@@ -19,11 +19,12 @@ enum PreludeRC {
         func trim(_ text: String) -> String { text.trimmingCharacters(in: .whitespaces) }
         func keyAndRest(_ source: String, line: Int) throws -> (String, String) {
             guard let first = source.first else { throw failure(line, "缺少按键。") }
-            let key = String(first)
-            guard key == key.lowercased(), key.unicodeScalars.allSatisfy({ (33...126).contains(Int($0.value)) }), key != "@", key != "#" else {
-                throw failure(line, "按键须为一个小写字母、数字或 ASCII 符号；@ 和 # 为保留符号。")
+            let isSpace = source.hasPrefix("<space>")
+            let key = isSpace ? " " : String(first)
+            guard isSpace || (key == key.lowercased() && key.unicodeScalars.allSatisfy({ (33...126).contains(Int($0.value)) }) && key != "@" && key != "#") else {
+                throw failure(line, "按键须为一个小写字母、数字或 ASCII 符号，或 <space>；@ 和 # 为保留符号。")
             }
-            let remainder = String(source.dropFirst())
+            let remainder = String(source.dropFirst(isSpace ? 7 : 1))
             guard remainder.isEmpty || remainder.first?.isWhitespace == true else { throw failure(line, "按键后需要空格。") }
             return (key, String(remainder.drop(while: { $0 == " " || $0 == "\t" })))
         }
@@ -53,11 +54,11 @@ enum PreludeRC {
                 }
                 let group: Draft
                 if let existing = parent.children.first(where: { $0.key == key }) {
-                    guard existing.script == nil else { throw failure(line, "按键 \(key) 已被动作占用。") }
-                    guard name == nil || name == existing.name else { throw failure(line, "同级分组按键 \(key) 已定义为“\(existing.name)”。") }
+                    guard existing.script == nil else { throw failure(line, "按键 \(key == " " ? "<space>" : key) 已被动作占用。") }
+                    guard name == nil || name == existing.name else { throw failure(line, "同级分组按键 \(key == " " ? "<space>" : key) 已定义为“\(existing.name)”。") }
                     group = existing
                 } else {
-                    guard let name else { throw failure(line, "分组 \(key) 尚未声明，请先写名称。") }
+                    guard let name else { throw failure(line, "分组 \(key == " " ? "<space>" : key) 尚未声明，请先写名称。") }
                     group = Draft(key: key, name: name, line: line)
                     parent.children.append(group)
                 }
@@ -73,7 +74,7 @@ enum PreludeRC {
             if script.first == " " { script.removeFirst() }
             guard !name.isEmpty, !trim(script).isEmpty else { throw failure(line, "动作名称和脚本不能为空。") }
             let parent = context.last ?? root
-            guard !parent.children.contains(where: { $0.key == key }) else { throw failure(line, "当前分组的按键 \(key) 重复。") }
+            guard !parent.children.contains(where: { $0.key == key }) else { throw failure(line, "当前分组的按键 \(key == " " ? "<space>" : key) 重复。") }
             parent.children.append(Draft(key: key, name: name, line: line, script: script))
         }
         func freeze(_ node: Draft, prefix: [String]) throws -> KeyNode {

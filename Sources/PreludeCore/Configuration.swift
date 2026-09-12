@@ -29,6 +29,8 @@ public struct KeyNode: Identifiable {
     public let children: [KeyNode]
     public var id: String { path.joined(separator: "\u{1F}") }
     public var key: String { path.last! }
+    public var keyDisplay: String { key == " " ? "␣" : key.uppercased() }
+    public var keyAccessibilityLabel: String { key == " " ? "空格键" : key }
     public var flattened: [KeyNode] { [self] + children.flatMap(\.flattened) }
 }
 public struct Navigator {

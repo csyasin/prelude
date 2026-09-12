@@ -149,7 +149,7 @@ struct HUDView: View {
                 .background(RoundedRectangle(cornerRadius: 10).fill(LinearGradient(colors: [Color(red: 0.15, green: 0.16, blue: 0.18), Color(red: 0.125, green: 0.135, blue: 0.155)], startPoint: .top, endPoint: .bottom)))
                 .shadow(color: .black.opacity(0.22), radius: 6, y: 3)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("按 \(node.key)，\(node.label)")
+                .accessibilityLabel("按 \(node.keyAccessibilityLabel)，\(node.label)")
             }
         }
     }

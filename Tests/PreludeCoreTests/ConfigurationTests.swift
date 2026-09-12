@@ -2,6 +2,25 @@ import XCTest
 @testable import PreludeCore
 
 final class ConfigurationTests: XCTestCase {
+    func testSpaceActionsGroupsAndReferences() throws {
+        let root = try Configuration.parse("<space> - action : printf '<space>'")
+        var nav = Navigator()
+        XCTAssertEqual(nav.press(" ", config: root), .action(root.bindings[0]))
+        XCTAssertEqual(root.bindings[0].action, "printf '<space>'")
+        XCTAssertEqual(root.tree[0].keyDisplay, "␣")
+        XCTAssertEqual(root.tree[0].keyAccessibilityLabel, "空格键")
+        let groups = try Configuration.parse("@ <space> - group\n<space> - child : true\n@ <space>\nx - other : true")
+        nav.reset()
+        XCTAssertEqual(nav.press(" ", config: groups), .branch)
+        XCTAssertEqual(nav.press(" ", config: groups), .action(groups.bindings[0]))
+        nav.back()
+        XCTAssertEqual(nav.press("x", config: groups), .action(groups.bindings[1]))
+        for invalid in ["<space>x - bad : true", "<Space> - bad : true", "<tab> - bad : true", "<space> - one : true\n<space> - two : true"] {
+            XCTAssertThrowsError(try Configuration.parse(invalid))
+        }
+        XCTAssertEqual(try Configuration.parse("< - less : true").tree[0].key, "<")
+    }
+
     private let sample = """
     # Applications
     @ a - 应用
