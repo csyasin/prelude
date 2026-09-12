@@ -5,95 +5,200 @@ import PreludeCore
 struct PreferencesView: View {
     @ObservedObject var model: AppModel
     @AppStorage(ThemeColor.preferenceKey) private var accentHex = ThemeColor.defaultHex
+    @AppStorage(EdgeLightPreference.enabledKey) private var edgeLightEnabled = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var errorMessage: String?
+    private var accent: Color { ThemeColor.color(accentHex) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(alignment: .center, spacing: 18) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("激活快捷键")
-                        .font(.system(size: 13, weight: .medium))
-                    Text(model.usesCustomHotkey ? "自定义" : "默认")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                ShortcutRecorder(leader: model.activationHotkey) { leader in
-                    do { try model.setActivationHotkey(leader) }
-                    catch { errorMessage = error.localizedDescription }
-                }
-                .frame(width: 190, height: 32)
-            }
-
-            HStack {
-                Text("点按快捷键后，直接按下新的组合。普通按键须搭配修饰键。")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("恢复默认") {
-                    do { try model.resetActivationHotkey() }
-                    catch { errorMessage = error.localizedDescription }
-                }
-                .disabled(!model.usesCustomHotkey)
-            }
-
-            Divider()
-
+        VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
+                sectionTitle("交互效果")
+                effectChoices
+            }
+            VStack(spacing: 0) {
+                HStack(spacing: 14) {
+                    rowIcon("keyboard")
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("主题色")
-                            .font(.system(size: 13, weight: .medium))
-                        Text("用于按键、高亮路径和状态提示，自动保存。")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                        Text("激活快捷键").font(.system(size: 13, weight: .medium))
+                        Text("点击右侧，按下新的组合键")
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    ColorPicker("自定义", selection: Binding(
-                        get: { ThemeColor.color(accentHex) },
-                        set: { if let hex = ThemeColor.hex($0) { accentHex = hex } }
-                    ), supportsOpacity: false)
-                    .fixedSize()
+                    ShortcutRecorder(leader: model.activationHotkey) { leader in
+                        do { try model.setActivationHotkey(leader) }
+                        catch { errorMessage = error.localizedDescription }
+                    }
+                    .frame(width: 142, height: 32)
+                    Button { do { try model.resetActivationHotkey() } catch { errorMessage = error.localizedDescription } } label: {
+                        Image(systemName: "arrow.counterclockwise").frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!model.usesCustomHotkey)
+                    .help("恢复默认快捷键")
+                    .accessibilityLabel("恢复默认快捷键")
                 }
-                HStack(spacing: 10) {
+                .padding(18)
+                Divider().padding(.leading, 64)
+                HStack(spacing: 14) {
+                    rowIcon("light.beacon.max")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("呼吸灯").font(.system(size: 13, weight: .medium))
+                        Text("所有交互效果共用屏幕边缘光")
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("显示呼吸灯", isOn: $edgeLightEnabled)
+                        .labelsHidden().toggleStyle(.switch)
+                        .accessibilityLabel("显示呼吸灯")
+                }
+                .padding(18)
+            }
+            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 18))
+
+            VStack(alignment: .leading, spacing: 16) {
+                sectionTitle("主题色")
+                HStack {
+                    Toggle("使用系统", isOn: Binding(
+                        get: { accentHex == ThemeColor.systemValue },
+                        set: { accentHex = $0 ? ThemeColor.systemValue : ThemeColor.defaultHex }
+                    ))
+                    .toggleStyle(.switch)
+                    .fixedSize()
+                    Spacer()
+                }
+                HStack(spacing: 12) {
                     ForEach(ThemeColor.presets, id: \.hex) { preset in
                         Button { accentHex = preset.hex } label: {
-                            Circle()
-                                .fill(ThemeColor.color(preset.hex))
-                                .frame(width: 24, height: 24)
+                            Circle().fill(ThemeColor.color(preset.hex))
+                                .frame(width: 29, height: 29)
                                 .overlay {
                                     if accentHex == preset.hex {
                                         Image(systemName: "checkmark")
-                                            .font(.system(size: 10, weight: .bold))
+                                            .font(.system(size: 11, weight: .bold))
                                             .foregroundStyle(ThemeColor.keyInk(preset.hex))
                                     }
                                 }
-                                .padding(3)
-                                .contentShape(Rectangle())
+                                .padding(5)
+                                .overlay(Circle().strokeBorder(accentHex == preset.hex ? accent.opacity(0.8) : .clear, lineWidth: 1.5))
+                                .contentShape(Circle())
                         }
                         .buttonStyle(.plain)
-                        .help(preset.name)
-                        .accessibilityLabel(preset.name)
+                        .help(preset.name).accessibilityLabel(preset.name)
                         .accessibilityAddTraits(accentHex == preset.hex ? .isSelected : [])
                     }
                     Spacer()
-                    Button("恢复默认") { accentHex = ThemeColor.defaultHex }
-                        .disabled(accentHex == ThemeColor.defaultHex)
-                        .accessibilityLabel("恢复默认主题色")
+                    ColorPicker("自定义", selection: Binding(
+                        get: { accent },
+                        set: { if let hex = ThemeColor.hex($0) { accentHex = hex } }
+                    ), supportsOpacity: false).fixedSize()
+                    Button { accentHex = ThemeColor.defaultHex } label: {
+                        Image(systemName: "arrow.counterclockwise").frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain).disabled(accentHex == ThemeColor.defaultHex)
+                    .help("恢复默认主题色").accessibilityLabel("恢复默认主题色")
                 }
             }
-
-            Spacer(minLength: 0)
         }
-        .padding(24)
-        .frame(width: 500, height: 260)
+        .padding(30)
+        .frame(width: 680)
+        .background(.background)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: model.interactionEffect)
         .alert("无法设置快捷键", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
-            Button("好", role: .cancel) { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "")
+            get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }
+        )) { Button("好", role: .cancel) { errorMessage = nil } }
+        message: { Text(errorMessage ?? "") }
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        HStack {
+            Text(title).font(.system(size: 13, weight: .semibold))
+            Spacer()
+        }
+    }
+    private func rowIcon(_ symbol: String) -> some View {
+        Image(systemName: symbol).font(.system(size: 18, weight: .regular))
+            .foregroundStyle(.secondary).frame(width: 30)
+    }
+
+    @ViewBuilder private var effectChoices: some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: 16) { choices }
+        } else { choices }
+    }
+    private var choices: some View {
+        HStack(spacing: 16) {
+            ForEach(InteractionEffect.allCases) { effect in
+                Button { model.setInteractionEffect(effect) } label: {
+                    VStack(alignment: .leading, spacing: 12) {
+                        miniature(effect)
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(effect.title).font(.system(size: 14, weight: .semibold))
+                                Text(effect == .island ? "从屏幕顶部展开" : "右下角紧凑侧列")
+                                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: model.interactionEffect == effect ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(model.interactionEffect == effect ? accent : Color.secondary.opacity(0.4))
+                                .font(.system(size: 18))
+                        }
+                    }
+                    .padding(14)
+                    .contentShape(RoundedRectangle(cornerRadius: 20))
+                    .modifier(PreferenceGlass(selected: model.interactionEffect == effect, accent: accent))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(effect.title)
+                .accessibilityAddTraits(model.interactionEffect == effect ? .isSelected : [])
+            }
+        }
+    }
+
+    private func miniature(_ effect: InteractionEffect) -> some View {
+        ZStack(alignment: effect == .island ? .top : .bottom) {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(LinearGradient(colors: [Color(red: 0.13, green: 0.19, blue: 0.27), Color(red: 0.28, green: 0.33, blue: 0.39)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            if effect == .island {
+                VStack(spacing: 6) {
+                    Capsule().fill(.white.opacity(0.2)).frame(width: 26, height: 3)
+                    ForEach(0..<2) { _ in
+                        HStack(spacing: 6) {
+                            RoundedRectangle(cornerRadius: 2).fill(accent).frame(width: 8, height: 8)
+                            Capsule().fill(.white.opacity(0.55)).frame(width: 45, height: 3)
+                        }
+                    }
+                }
+                .padding(10).background(.black, in: UnevenRoundedRectangle(bottomLeadingRadius: 12, bottomTrailingRadius: 12))
+            } else {
+                VStack(spacing: 4) {
+                    ForEach(0..<3) { _ in
+                        HStack(spacing: 4) {
+                            Capsule().fill(.white.opacity(0.7)).frame(width: 24, height: 3)
+                            RoundedRectangle(cornerRadius: 2).fill(accent).frame(width: 6, height: 6)
+                        }
+                        .padding(6).background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 5))
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.trailing, 8)
+                .padding(.bottom, 4)
+            }
+        }
+        .frame(height: 106)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct PreferenceGlass: ViewModifier {
+    let selected: Bool
+    let accent: Color
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content.glassEffect(.regular.tint(selected ? accent.opacity(0.16) : .clear).interactive(), in: RoundedRectangle(cornerRadius: 20))
+        } else {
+            content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
         }
     }
 }

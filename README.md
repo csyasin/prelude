@@ -133,3 +133,9 @@ Xcode 打开 `Package.swift`。`--check-config /path/preluderc` 仅校验后退�
 主要源码：`PreludeRC.swift` 解析 DSL；`Configuration.swift` 构造树和导航索引；`IslandView.swift` 绘制灵动岛和纵向按键列表；`OverlayController.swift` 负责刘海检测与顶部定位；`AppModel.swift` 管理输入/重载；`ActionRunner.swift` 执行 shell。
 
 本地 ad-hoc 签名，无 Developer ID 公证、自动更新、开机自启。具体验证范围见 VALIDATION.md。
+
+### 交互效果
+
+在菜单栏「偏好设置…」或激活后的 `⌘,` 中选择交互效果，自动保存并在下次激活时使用。默认「灵动岛」；可切换为「HUD」，两种交互效果激活时均显示全局彩色呼吸灯，多束柔光沿四边交错流动；靠近屏幕右下角并留出间距，显示无整体背景的单列实色动作条，以动作名称为主、小号快捷键为辅；多项向上展开，边缘光降低亮度。使用鼠标所在屏幕；支持主题色、退格返回、Esc 退出及系统减少动态效果设置。
+
+偏好设置中的「显示呼吸灯」开关全局控制灵动岛和 HUD的边缘光，默认开启，修改自动保存。关闭后停止光效动画。

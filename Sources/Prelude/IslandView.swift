@@ -112,8 +112,8 @@ struct IslandView: View {
     private var targetHeight: CGFloat {
         if model.completing { return contentTopInset + toastLayout.contentHeight + visibleSidePadding }
         if model.configError != nil { return contentTopInset + 122 + 8 }
-        // 24pt path, 7pt gap, 1pt divider, 7pt gap. Root has no header.
-        let headerHeight: CGFloat = model.path.isEmpty ? 0 : 39
+        // Keep the same header space at root and within a route.
+        let headerHeight: CGFloat = 39
         return contentTopInset + headerHeight + CGFloat(rowCount) * 37 + navigationBottomPadding
     }
 
@@ -226,7 +226,7 @@ struct IslandView: View {
     private var navigationContent: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
-                if !model.path.isEmpty {
+                Group {
                     VStack(spacing: 0) {
                         routeHeader
                             .frame(height: 24)
@@ -246,8 +246,7 @@ struct IslandView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: model.path.isEmpty ? 0 : 39, alignment: .top)
-            .accessibilityHidden(model.path.isEmpty)
+            .frame(height: 39, alignment: .top)
             HStack(alignment: .top, spacing: 12) {
                 ForEach(Array(columns.enumerated()), id: \.offset) { columnIndex, column in
                     if columnIndex > 0 {
@@ -288,6 +287,12 @@ struct IslandView: View {
                               label: label, isCurrent: depth == model.path.count)
         }
         return HStack(spacing: 0) {
+            if labels.isEmpty {
+                Text("PRELUDE")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .tracking(2)
+                    .foregroundStyle(.white.opacity(0.55))
+            }
             if fitted.omittedCount > 0 {
                 Text("…")
                     .font(.system(size: 12))
@@ -307,7 +312,7 @@ struct IslandView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(labels.joined(separator: "，"))
+        .accessibilityLabel(labels.isEmpty ? "Prelude" : labels.joined(separator: "，"))
     }
 
     private var routeSeparator: some View {
@@ -319,50 +324,7 @@ struct IslandView: View {
     }
 
     private func optionRow(_ node: KeyNode) -> some View {
-        HStack(spacing: 10) {
-            routeIdentity(node)
-            Spacer(minLength: 4)
-            Group {
-                if node.binding == nil {
-                    Image(systemName: "chevron.right")
-                } else {
-                    Image(systemName: "bolt.fill")
-                }
-            }
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(node.binding == nil ? Color.gray : islandAccent.opacity(0.42))
-        }
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(.white.opacity(0.045)).frame(height: 1)
-        }
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("按 \(node.key)，\(node.label)")
-    }
-
-    private func routeIdentity(_ node: KeyNode) -> some View {
-        HStack(spacing: 9) {
-            Text(node.key.uppercased())
-                .font(.system(size: 14, weight: .bold, design: .monospaced))
-                .foregroundStyle(ThemeColor.keyInk(accentHex))
-                .frame(width: 25, height: 25)
-                .background(RoundedRectangle(cornerRadius: 7).fill(islandAccent))
-            Text(node.label)
-                .font(.system(size: 12.5, weight: .regular))
-                .foregroundStyle(.white.opacity(0.82))
-                .lineLimit(1)
-                .truncationMode(.tail)
-            if node.binding == nil {
-                Text("\(node.children.count)")
-                    .font(.system(size: 10, weight: .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(Color.gray)
-                    .padding(.horizontal, 6)
-                    .frame(height: 18)
-                    .background(Capsule().fill(.white.opacity(0.09)))
-                    .fixedSize()
-            }
-        }
+        KeyOptionRow(node: node, accentHex: accentHex)
     }
 
     private var toastIcon: (symbol: String, color: Color, label: String)? {

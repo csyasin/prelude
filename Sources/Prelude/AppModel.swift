@@ -12,8 +12,16 @@ struct IslandScreenMetrics: Equatable {
     static let fallback = IslandScreenMetrics(notchWidth: 96, notchDepth: 12, maximumWidth: 560)
 }
 
+enum InteractionEffect: String, CaseIterable, Identifiable {
+    case island, subtitles
+    static let preferenceKey = "interactionEffect"
+    var id: String { rawValue }
+    var title: String { self == .island ? "灵动岛" : "HUD" }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
+    @Published private(set) var interactionEffect = InteractionEffect(rawValue: UserDefaults.standard.string(forKey: InteractionEffect.preferenceKey) ?? "") ?? .island
     @Published var config: Configuration?
     @Published var path: [String] = []
     @Published var message = "输入按键，沿路径前往"
@@ -25,6 +33,7 @@ final class AppModel: ObservableObject {
     @Published var invalidCount = 0
     @Published var islandMetrics = IslandScreenMetrics.fallback
     @Published private(set) var presentationID = 0
+    @Published private(set) var navigationSessionID = 0
     @Published private(set) var activationHotkey = Leader()
     @Published private(set) var usesCustomHotkey = false
     let configURL: URL
@@ -38,6 +47,7 @@ final class AppModel: ObservableObject {
     private var reading = false
     private var monitor: Any?
     private var externalClickMonitor: Any?
+    private var colorObserver: NSObjectProtocol?
     private var screenObserver: NSObjectProtocol?
     private var sleepObserver: NSObjectProtocol?
     private var pendingToast: ToastRequest?
@@ -52,6 +62,7 @@ final class AppModel: ObservableObject {
         } else {
             configURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/prelude/preluderc")
         }
+        UserDefaults.standard.set(interactionEffect.rawValue, forKey: InteractionEffect.preferenceKey)
         overlays = OverlayController(model: self)
         hotkey.onPress = { [weak self] in
             MainActor.assumeIsolated { self?.toggle() }
@@ -59,6 +70,9 @@ final class AppModel: ObservableObject {
         runner.onError = { [weak self] error in self?.showError(error) }
     }
     func start() {
+        colorObserver = NotificationCenter.default.addObserver(forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.objectWillChange.send() }
+        }
         configureHotkey()
         do {
             if !FileManager.default.fileExists(atPath: configURL.path) {
@@ -157,9 +171,18 @@ final class AppModel: ObservableObject {
             configError = error.localizedDescription
         }
     }
+    func setInteractionEffect(_ effect: InteractionEffect) {
+        guard effect != interactionEffect else { return }
+        dismiss()
+        overlays.resetPresentation()
+        interactionEffect = effect
+        UserDefaults.standard.set(effect.rawValue, forKey: InteractionEffect.preferenceKey)
+        overlays.prepare()
+    }
     func toggle() { active && !completing ? dismiss() : activate() }
     func beginPresentation() { presentationID += 1 }
     func activate() {
+        navigationSessionID += 1
         navigator.reset(); path = []; completing = false; toast = nil
         message = "输入按键，沿路径前往"
         active = true
@@ -298,6 +321,7 @@ final class AppModel: ObservableObject {
         reloadTimer?.invalidate()
         if let monitor { NSEvent.removeMonitor(monitor) }
         if let externalClickMonitor { NSEvent.removeMonitor(externalClickMonitor) }
+        if let colorObserver { NotificationCenter.default.removeObserver(colorObserver) }
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
         if let sleepObserver { NSWorkspace.shared.notificationCenter.removeObserver(sleepObserver) }
         overlays.hide()
