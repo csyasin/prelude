@@ -43,6 +43,7 @@ final class AppModel: ObservableObject {
     @Published var active = false
     @Published var completing = false
     @Published var toast: ToastRequest?
+    @Published private(set) var heldNavigationKeys: Set<UInt16> = []
     @Published var invalidCount = 0
     @Published var islandMetrics = IslandScreenMetrics.fallback
     @Published private(set) var presentationID = 0
@@ -99,9 +100,14 @@ final class AppModel: ObservableObject {
         reloadTimer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.reload() }
         }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self, self.active, !self.completing else { return event }
+            if event.type == .keyUp {
+                self.heldNavigationKeys.remove(event.keyCode)
+                return nil
+            }
             if event.type != .keyDown { return event }
+            if !event.isARepeat { self.heldNavigationKeys.insert(event.keyCode) }
             self.handle(event)
             return nil
         }
@@ -195,6 +201,7 @@ final class AppModel: ObservableObject {
     func toggle() { active && !completing ? dismiss() : activate() }
     func beginPresentation() { presentationID += 1 }
     func activate() {
+        heldNavigationKeys.removeAll()
         navigationSessionID += 1
         navigator.reset(); path = []; completing = false; toast = nil
         message = "输入按键，沿路径前往"
@@ -204,6 +211,7 @@ final class AppModel: ObservableObject {
     func dismiss() {
         guard active else { return }
         active = false
+        heldNavigationKeys.removeAll()
         overlays.hide()
         if completing {
             Task { @MainActor [weak self] in
@@ -275,6 +283,7 @@ final class AppModel: ObservableObject {
             return
         }
         if !replacingNavigation { pendingToast = nil }
+        heldNavigationKeys.removeAll()
         completing = true
         toast = request
         active = true

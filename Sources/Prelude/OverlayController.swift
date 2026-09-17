@@ -195,7 +195,7 @@ private struct GlobalEdgeLightView: View {
     @State private var stopTask: Task<Void, Never>?
 
     var body: some View {
-        FlowingEdgeLight(active: running, reduceMotion: reduceMotion, accent: accentHex)
+        FlowingEdgeLight(active: running, reduceMotion: reduceMotion, accent: accentHex, pressed: !model.heldNavigationKeys.isEmpty)
             .opacity(visible ? 1 : 0)
             .accessibilityHidden(true)
             .onAppear { synchronize() }
