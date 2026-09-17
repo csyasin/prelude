@@ -13,10 +13,23 @@ struct IslandScreenMetrics: Equatable {
 }
 
 enum InteractionEffect: String, CaseIterable, Identifiable {
-    case island, subtitles
+    case island, subtitles, invisible
     static let preferenceKey = "interactionEffect"
     var id: String { rawValue }
-    var title: String { self == .island ? "灵动岛" : "HUD" }
+    var title: String {
+        switch self {
+        case .island: "灵动岛"
+        case .subtitles: "HUD"
+        case .invisible: "无形"
+        }
+    }
+    var description: String {
+        switch self {
+        case .island: "从屏幕顶部展开"
+        case .subtitles: "右下角紧凑侧列"
+        case .invisible: "无提示，直接输入"
+        }
+    }
 }
 
 @MainActor
@@ -251,6 +264,11 @@ final class AppModel: ObservableObject {
     }
 
     func showToast(_ request: ToastRequest, replacingNavigation: Bool = false) {
+        guard interactionEffect != .invisible else {
+            pendingToast = nil
+            if replacingNavigation { dismiss() }
+            return
+        }
         // A notification must not take away an in-progress keyboard route.
         guard replacingNavigation || !active || completing else {
             pendingToast = request

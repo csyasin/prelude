@@ -84,6 +84,11 @@ final class OverlayController {
             panel?.setFrame(screen.frame, display: false)
             return
         }
+        if model.interactionEffect == .invisible {
+            // Keep a transparent key window solely to consume navigation input.
+            panel?.setFrame(NSRect(x: screen.frame.minX, y: screen.frame.minY, width: 1, height: 1), display: false)
+            return
+        }
         let left = screen.auxiliaryTopLeftArea ?? .zero
         let right = screen.auxiliaryTopRightArea ?? .zero
         let notchGap = max(0, right.minX - left.maxX)
@@ -145,7 +150,7 @@ final class OverlayController {
 
     func hide() {
         releaseKeyboardFocus()
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        if model.interactionEffect == .invisible || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             lightPanel?.orderOut(nil)
             panel?.orderOut(nil)
         }
@@ -165,6 +170,7 @@ struct InteractionView: View {
     @ObservedObject var model: AppModel
     var body: some View {
         switch model.interactionEffect {
+        case .invisible: Color.clear.accessibilityHidden(true)
         case .island: IslandView(model: model)
         case .subtitles:
             HUDView(model: model)

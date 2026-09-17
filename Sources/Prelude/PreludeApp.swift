@@ -58,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         applyIcons()
         let menu = NSMenu()
-        addItem(to: menu, title: "激活 Prelude", action: #selector(activate))
+        addItem(to: menu, title: "打开 Prelude", action: #selector(activate))
         menu.addItem(.separator())
         addItem(to: menu, title: "偏好设置…", action: #selector(showPreferences), key: ",")
         addItem(to: menu, title: "重新载入配置", action: #selector(reload), key: "r")

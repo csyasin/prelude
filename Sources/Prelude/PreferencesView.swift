@@ -50,6 +50,7 @@ struct PreferencesView: View {
                     Spacer()
                     Toggle("显示呼吸灯", isOn: $edgeLightEnabled)
                         .labelsHidden().toggleStyle(.switch)
+                        .tint(accent)
                         .accessibilityLabel("显示呼吸灯")
                 }
                 .padding(18)
@@ -135,7 +136,7 @@ struct PreferencesView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(effect.title).font(.system(size: 14, weight: .semibold))
-                                Text(effect == .island ? "从屏幕顶部展开" : "右下角紧凑侧列")
+                                Text(effect.description)
                                     .font(.system(size: 11)).foregroundStyle(.secondary)
                             }
                             Spacer()
@@ -170,7 +171,7 @@ struct PreferencesView: View {
                     }
                 }
                 .padding(10).background(.black, in: UnevenRoundedRectangle(bottomLeadingRadius: 12, bottomTrailingRadius: 12))
-            } else {
+            } else if effect == .subtitles {
                 VStack(spacing: 4) {
                     ForEach(0..<3) { _ in
                         HStack(spacing: 4) {
