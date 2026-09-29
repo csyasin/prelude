@@ -100,7 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let menuURL = Bundle.main.url(forResource: "PreludeMenuTemplate", withExtension: "png"),
            let menuIcon = NSImage(contentsOf: menuURL) {
-            menuIcon.size = NSSize(width: 18, height: 18)
+            menuIcon.size = NSSize(width: 20, height: 20)
             menuIcon.isTemplate = true
             status.button?.image = menuIcon
         }
