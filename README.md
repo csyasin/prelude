@@ -1,6 +1,8 @@
-# Prelude 0.4
+# Prelude
 
 原生 macOS Leader 键启动器。配置为无扩展名的 **`~/.config/prelude/preluderc`**，不使用 TOML。激活后，Prelude 从 Mac 刘海或屏幕顶部展开为灵动岛，只显示当前路径和下一步可用按键。
+
+[下载 macOS 版（DMG）](https://github.com/csyasin/prelude/releases/latest/download/Prelude.dmg) · macOS 14+ · Apple Silicon（M 系列芯片）。下载链接在首次正式 Release 发布后生效。
 
 ## 使用
 
@@ -121,7 +123,7 @@ subprocess.run(["open", "-g", "prelude://toast?" + query], check=True)
 
 ## 开发
 
-macOS 14+，Xcode / Swift 5.9+，当前构建为 Apple Silicon。应用本身没有第三方包依赖，已移除 TOMLKit。
+运行需要 macOS 14+；源码构建需要 Xcode 26+（包含 macOS 26 SDK），当前发布为 Apple Silicon。应用本身没有第三方包依赖，已移除 TOMLKit。
 
 ```sh
 swift test
@@ -133,7 +135,67 @@ Xcode 打开 `Package.swift`。`--check-config /path/preluderc` 仅校验后退�
 
 主要源码：`PreludeRC.swift` 解析 DSL；`Configuration.swift` 构造树和导航索引；`IslandView.swift` 绘制灵动岛和纵向按键列表；`OverlayController.swift` 负责刘海检测与顶部定位；`AppModel.swift` 管理输入/重载；`ActionRunner.swift` 执行 shell。
 
-本地 ad-hoc 签名，无 Developer ID 公证、自动更新、开机自启。具体验证范围见 VALIDATION.md。
+本地 ad-hoc 签名，无 Developer ID 公证、自动更新。具体验证范围见 VALIDATION.md。
+
+### DMG 打包与 GitHub 发布
+
+本地构建并打包：
+
+```sh
+./scripts/build.sh
+./scripts/package-dmg.sh
+```
+
+输出为 `dist/Prelude.dmg` 和 `dist/Prelude.dmg.sha256`。DMG 内含 `Prelude.app` 与指向 `/Applications` 的快捷方式；校验文件记录 DMG 的 SHA-256。仅打包已构建的应用，不把本机用户配置放入安装包。
+
+发布采用[语义版本号](https://semver.org/lang/zh-CN/)：修复问题递增 `patch`，功能迭代递增 `minor`，主版本迭代递增 `major`。`0.x` 表示初期开发阶段。你选择本次递增类型，`scripts/release.py` 自动更新 `Info.plist` 的产品版本，版本变化时提交 `chore: release vX.Y.Z`，创建对应标签，再原子推送当前分支和标签到 `origin`。
+
+`.github/workflows/release.yml` 收到标签后，校验标签与提交中的版本一致，使用 macOS 26 的 Apple Silicon runner 执行核心及发布脚本测试、Release 构建、架构与配置校验、DMG 打包，最后创建 GitHub Release 并上传 DMG 和 SHA-256 文件。仅支持正式 `vX.Y.Z` 标签；产品版本从标签写入应用包，「关于 Prelude」从应用包读取版本和构建号。
+
+构建号 `CFBundleVersion` 由 CI 按「运行编号.重试编号」生成，例如第 12 次发布工作流首次尝试为 `12.1`，重跑为 `12.2`，下一次工作流为 `13.1`。[GitHub 编号规则](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts)。源文件中的构建号只是模板，不需要维护。直接本地构建默认使用「Git 提交数量.0」，同一提交重复构建保持相同编号；无 Git 历史的源码使用 `1.0`。如需复现特定版本，可通过 `APP_VERSION`、`APP_BUILD_NUMBER` 显式覆盖产物。
+
+首次启用：
+
+1. 在仓库 **Settings → Actions → General** 确认 GitHub Actions 已启用，并允许 `actions/checkout`。工作流已声明 `contents: write`，发布使用 GitHub 自动提供的 `GITHUB_TOKEN`，无需个人访问令牌或额外 Secrets。组织策略若限制工作流写权限，需要仓库管理员调整。
+2. 确认要发布的应用代码和发布脚本已保存，提交本次改动。发布命令要求工作区干净，并使用 Git 当前分支；需要 macOS、Git 和 Python 3。首次准备可以执行：
+
+   ```sh
+   git add .
+   git commit -m "feat: prepare initial release"
+   ```
+
+3. 发布当前已配置的 `0.1.0`：
+
+   ```sh
+   ./scripts/release.py current
+   ```
+
+在仓库 **Actions → Release** 查看构建日志；全部成功后，安装包出现在 **Releases → 对应版本 → Assets**，README 中的最新版下载链接继续有效。
+
+以后先照常提交功能改动，再执行一条发布命令。以下均以当前版本 `0.1.0` 为起点：
+
+| 命令 | 下个版本 | 用途 |
+| --- | --- | --- |
+| `./scripts/release.py patch` | `0.1.1` | 问题修复、小调整 |
+| `./scripts/release.py minor` | `0.2.0` | 功能迭代 |
+| `./scripts/release.py major` | `1.0.0` | 主版本迭代 |
+| `./scripts/release.py 0.3.0` | `0.3.0` | 明确指定一个更高版本 |
+
+想先查看计划，可使用 `./scripts/release.py patch --dry-run`；它只读取本地数据，不修改文件、提交、标签或远端。真正发布时脚本会同步远端信息，检查工作区、分支和版本标签，拒绝重复版本与版本回退。远端分支领先或发生分叉时，先同步代码再发布。
+
+若 Git 推送失败，版本提交和标签留在本地，修复连接或权限后执行 `./scripts/release.py current` 继续推送。若 Actions 构建或上传失败，在 GitHub 重跑失败任务，构建号自动增加；上传中断留下的 Release 草稿可以继续完成。已发布的版本及资产保持不变，修改代码后用新版本重新发布。
+
+本地需要指定版本时可运行 `APP_VERSION=0.1.0 APP_BUILD_NUMBER=12.1 ./scripts/build.sh`，只改构建产物中的版本信息。当前自动发布沿用 ad-hoc 签名，尚未进行 Developer ID 签名与 Apple 公证；下载到其他 Mac 后可能被系统安全检查拦截。若需要正式公证分发，应另外配置 Developer ID 证书、Apple 公证凭据及签名流程。GitHub 自动发布不会自动更新用户已安装的应用。
+
+### 开机自启
+
+普通启动或重新打开应用时显示导航面板，保留激活快捷键与「打开 Prelude」入口。偏好设置不会随启动自动打开，只通过「偏好设置…」或导航中的 `⌘,` 打开。
+
+在菜单栏「偏好设置…」中开启「开机自启」，Prelude 会在登录 Mac 后自动在菜单栏运行，不主动展开导航面板。关闭开关即可移除登录项，不影响当前运行。
+
+开关读取 macOS 的实际登录项状态；若需要系统批准，会显示提示和「打开系统设置」入口。从系统设置返回 Prelude 后状态自动刷新。此设置由系统保存，不属于 `preluderc`，首次使用不会自动启用。
+
+请从构建后的 `Prelude.app` 设置开机自启，建议先将应用放到 `/Applications` 等固定位置再开启。
 
 ### 交互效果
 
@@ -142,3 +204,7 @@ Xcode 打开 `Package.swift`。`--check-config /path/preluderc` 仅校验后退�
 偏好设置中的「显示呼吸灯」开关全局控制所有交互效果的边缘光，默认开启，修改自动保存。关闭后停止光效动画。
 
 「无形」模式不显示按键列表或 Toast 通知，激活后直接输入按键序列执行动作。呼吸灯仍由独立的「显示呼吸灯」开关控制。退格返回、Esc 退出和 `⌘,` 打开偏好设置照常可用。
+
+### 主题色
+
+主题色选择在同一行依次显示预设颜色、竖线分隔后的「跟随系统」圆形色块，以及再次分隔后的「自定义」圆形控件。点击任一选项直接应用颜色；「自定义」独立记住上次选色，点击旁边的铅笔打开系统选色面板，修改即时生效并保存。首次使用自定义时，点击色块或文案直接打开选色面板。选中的选项显示勾选与外圈，即使自定义色与预设相同也按所选来源显示；不提供独立的系统开关或自定义重置按钮。

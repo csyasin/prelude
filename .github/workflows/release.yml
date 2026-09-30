@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set release version
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Release tags must use vX.Y.Z format, for example v0.1.0." >&2
+            exit 1
+          fi
+          if [[ "$(uname -m)" != arm64 ]]; then
+            echo "This release requires an Apple Silicon runner." >&2
+            exit 1
+          fi
+          SOURCE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)"
+          if [[ "$SOURCE_VERSION" != "${GITHUB_REF_NAME#v}" ]]; then
+            echo "Tag and Info.plist version differ. Use scripts/release.py to prepare the release." >&2
+            exit 1
+          fi
+          echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          echo "APP_BUILD_NUMBER=$GITHUB_RUN_NUMBER.$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+
+      - name: Run tests
+        run: |
+          swift test
+          python3 -B -m unittest discover -s Tests/ReleaseScripts
+
+      - name: Build application
+        run: ./scripts/build.sh
+
+      - name: Verify application configuration and architecture
+        run: |
+          lipo -verify_arch arm64 dist/Prelude.app/Contents/MacOS/Prelude
+          dist/Prelude.app/Contents/MacOS/Prelude --check-config Sources/Prelude/Resources/preluderc
+
+      - name: Package DMG
+        run: ./scripts/package-dmg.sh
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/publish-release.sh "$GITHUB_REF_NAME"

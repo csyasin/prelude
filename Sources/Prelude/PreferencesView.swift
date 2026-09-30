@@ -4,11 +4,19 @@ import PreludeCore
 
 struct PreferencesView: View {
     @ObservedObject var model: AppModel
+    @StateObject private var launchAtLogin = LaunchAtLogin()
+    @StateObject private var customColorPicker = CustomColorPicker()
     @AppStorage(ThemeColor.preferenceKey) private var accentHex = ThemeColor.defaultHex
+    @AppStorage(ThemeColor.sourcePreferenceKey) private var accentSource = ""
+    @AppStorage(ThemeColor.customHexPreferenceKey) private var customAccentHex = ""
     @AppStorage(EdgeLightPreference.enabledKey) private var edgeLightEnabled = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var errorMessage: String?
+    @State private var errorTitle = "无法设置快捷键"
     private var accent: Color { ThemeColor.color(accentHex) }
+    private var colorSource: ThemeColor.Source {
+        ThemeColor.Source(rawValue: accentSource) ?? ThemeColor.source(for: accentHex)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -27,10 +35,10 @@ struct PreferencesView: View {
                     Spacer()
                     ShortcutRecorder(leader: model.activationHotkey) { leader in
                         do { try model.setActivationHotkey(leader) }
-                        catch { errorMessage = error.localizedDescription }
+                        catch { errorTitle = "无法设置快捷键"; errorMessage = error.localizedDescription }
                     }
                     .frame(width: 142, height: 32)
-                    Button { do { try model.resetActivationHotkey() } catch { errorMessage = error.localizedDescription } } label: {
+                    Button { do { try model.resetActivationHotkey() } catch { errorTitle = "无法设置快捷键"; errorMessage = error.localizedDescription } } label: {
                         Image(systemName: "arrow.counterclockwise").frame(width: 24, height: 24)
                     }
                     .buttonStyle(.plain)
@@ -54,50 +62,92 @@ struct PreferencesView: View {
                         .accessibilityLabel("显示呼吸灯")
                 }
                 .padding(18)
+                Divider().padding(.leading, 64)
+                HStack(spacing: 14) {
+                    rowIcon("power")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("开机自启").font(.system(size: 13, weight: .medium))
+                        Text(launchAtLogin.description)
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if launchAtLogin.requiresApproval {
+                        Button("打开系统设置") { launchAtLogin.openSystemSettings() }
+                            .controlSize(.small)
+                    }
+                    Toggle("开机自启", isOn: Binding(
+                        get: { launchAtLogin.isOn },
+                        set: { enabled in
+                            do { try launchAtLogin.setEnabled(enabled) }
+                            catch { errorTitle = "无法设置开机自启"; errorMessage = error.localizedDescription }
+                        }
+                    ))
+                    .labelsHidden().toggleStyle(.switch)
+                    .tint(accent)
+                    .accessibilityLabel("开机自启")
+                }
+                .padding(18)
             }
             .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 18))
 
             VStack(alignment: .leading, spacing: 16) {
                 sectionTitle("主题色")
-                HStack {
-                    Toggle("使用系统", isOn: Binding(
-                        get: { accentHex == ThemeColor.systemValue },
-                        set: { accentHex = $0 ? ThemeColor.systemValue : ThemeColor.defaultHex }
-                    ))
-                    .toggleStyle(.switch)
-                    .fixedSize()
-                    Spacer()
-                }
                 HStack(spacing: 12) {
                     ForEach(ThemeColor.presets, id: \.hex) { preset in
-                        Button { accentHex = preset.hex } label: {
-                            Circle().fill(ThemeColor.color(preset.hex))
-                                .frame(width: 29, height: 29)
-                                .overlay {
-                                    if accentHex == preset.hex {
-                                        Image(systemName: "checkmark")
-                                            .font(.system(size: 11, weight: .bold))
-                                            .foregroundStyle(ThemeColor.keyInk(preset.hex))
-                                    }
-                                }
-                                .padding(5)
-                                .overlay(Circle().strokeBorder(accentHex == preset.hex ? accent.opacity(0.8) : .clear, lineWidth: 1.5))
-                                .contentShape(Circle())
+                        Button { applyThemeColor(preset.hex, source: .preset) } label: {
+                            themeSwatch(preset.hex, selected: colorSource == .preset && accentHex == preset.hex)
                         }
                         .buttonStyle(.plain)
                         .help(preset.name).accessibilityLabel(preset.name)
-                        .accessibilityAddTraits(accentHex == preset.hex ? .isSelected : [])
+                        .accessibilityAddTraits(colorSource == .preset && accentHex == preset.hex ? .isSelected : [])
                     }
-                    Spacer()
-                    ColorPicker("自定义", selection: Binding(
-                        get: { accent },
-                        set: { if let hex = ThemeColor.hex($0) { accentHex = hex } }
-                    ), supportsOpacity: false).fixedSize()
-                    Button { accentHex = ThemeColor.defaultHex } label: {
-                        Image(systemName: "arrow.counterclockwise").frame(width: 24, height: 24)
+                    Divider().frame(height: 24)
+                    Button { applyThemeColor(ThemeColor.systemValue, source: .system) } label: {
+                        HStack(spacing: 6) {
+                            themeSwatch(ThemeColor.systemValue, selected: colorSource == .system)
+                            Text("跟随系统").font(.system(size: 13)).foregroundStyle(.secondary)
+                        }
                     }
-                    .buttonStyle(.plain).disabled(accentHex == ThemeColor.defaultHex)
-                    .help("恢复默认主题色").accessibilityLabel("恢复默认主题色")
+                    .buttonStyle(.plain)
+                    .help("使用系统主题色作为主色")
+                    .accessibilityLabel("跟随系统")
+                    .accessibilityAddTraits(colorSource == .system ? .isSelected : [])
+                    Divider().frame(height: 24)
+                    HStack(spacing: 6) {
+                        Button {
+                            if customAccentHex.isEmpty { editCustomColor() }
+                            else { applyThemeColor(customAccentHex, source: .custom) }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if customAccentHex.isEmpty {
+                                    Circle().fill(.quaternary)
+                                        .frame(width: 29, height: 29)
+                                        .overlay {
+                                            Image(systemName: "plus").font(.system(size: 11, weight: .medium))
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding(5)
+                                } else {
+                                    themeSwatch(customAccentHex, selected: colorSource == .custom)
+                                }
+                                Text("自定义").font(.system(size: 13)).foregroundStyle(.secondary)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(customAccentHex.isEmpty ? "设置自定义主题色" : "使用上次的自定义主题色")
+                        .accessibilityLabel("自定义")
+                        .accessibilityAddTraits(colorSource == .custom ? .isSelected : [])
+                        Button { editCustomColor() } label: {
+                            Image(systemName: "pencil").font(.system(size: 13))
+                                .foregroundStyle(.secondary).frame(width: 24, height: 32)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("编辑自定义主题色")
+                        .accessibilityLabel("编辑自定义主题色")
+                    }
+                    Spacer(minLength: 0)
                 }
             }
         }
@@ -105,7 +155,15 @@ struct PreferencesView: View {
         .frame(width: 680)
         .background(.background)
         .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: model.interactionEffect)
-        .alert("无法设置快捷键", isPresented: Binding(
+        .onAppear {
+            migrateThemeColorSelection()
+            launchAtLogin.refresh()
+        }
+        .onDisappear { customColorPicker.close() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            launchAtLogin.refresh()
+        }
+        .alert(errorTitle, isPresented: Binding(
             get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }
         )) { Button("好", role: .cancel) { errorMessage = nil } }
         message: { Text(errorMessage ?? "") }
@@ -120,6 +178,49 @@ struct PreferencesView: View {
     private func rowIcon(_ symbol: String) -> some View {
         Image(systemName: symbol).font(.system(size: 18, weight: .regular))
             .foregroundStyle(.secondary).frame(width: 30)
+    }
+
+    private func themeSwatch(_ hex: String, selected: Bool) -> some View {
+        Circle().fill(ThemeColor.color(hex))
+            .frame(width: 29, height: 29)
+            .overlay {
+                if selected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(ThemeColor.keyInk(hex))
+                }
+            }
+            .padding(5)
+            .overlay(Circle().strokeBorder(selected ? ThemeColor.color(hex).opacity(0.8) : .clear, lineWidth: 1.5))
+            .contentShape(Circle())
+    }
+
+    private func migrateThemeColorSelection() {
+        let source = colorSource
+        if customAccentHex.isEmpty && source == .custom { customAccentHex = accentHex }
+        if ThemeColor.Source(rawValue: accentSource) == nil { accentSource = source.rawValue }
+    }
+
+    private func applyThemeColor(_ hex: String, source: ThemeColor.Source) {
+        customColorPicker.close()
+        accentSource = source.rawValue
+        accentHex = hex
+    }
+
+    private func editCustomColor() {
+        if customAccentHex.isEmpty {
+            customAccentHex = ThemeColor.hex(accent) ?? ThemeColor.defaultHex
+        }
+        applyThemeColor(customAccentHex, source: .custom)
+        customColorPicker.open(selection: Binding(
+            get: { ThemeColor.color(customAccentHex) },
+            set: { color in
+                guard let hex = ThemeColor.hex(color) else { return }
+                customAccentHex = hex
+                accentSource = ThemeColor.Source.custom.rawValue
+                accentHex = hex
+            }
+        ))
     }
 
     @ViewBuilder private var effectChoices: some View {
@@ -190,6 +291,36 @@ struct PreferencesView: View {
         }
         .frame(height: 106)
         .accessibilityHidden(true)
+    }
+}
+
+@MainActor
+private final class CustomColorPicker: NSObject, ObservableObject {
+    private var selection: SwiftUI.Binding<Color>?
+
+    func open(selection: SwiftUI.Binding<Color>) {
+        self.selection = selection
+        let panel = NSColorPanel.shared
+        let color = NSColor(selection.wrappedValue)
+        panel.color = color.usingColorSpace(.sRGB) ?? color
+        panel.showsAlpha = false
+        panel.isContinuous = true
+        panel.setTarget(self)
+        panel.setAction(#selector(colorChanged(_:)))
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func colorChanged(_ sender: NSColorPanel) {
+        selection?.wrappedValue = Color(nsColor: sender.color)
+    }
+
+    func close() {
+        guard selection != nil else { return }
+        selection = nil
+        let panel = NSColorPanel.shared
+        panel.setTarget(nil)
+        panel.setAction(nil)
+        panel.close()
     }
 }
 

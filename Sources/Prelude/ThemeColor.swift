@@ -4,12 +4,23 @@ import SwiftUI
 /// Store sRGB components rather than archiving platform-specific color objects.
 enum ThemeColor {
     static let preferenceKey = "appearance.accentHex"
+    static let sourcePreferenceKey = "appearance.accentSource"
+    static let customHexPreferenceKey = "appearance.customAccentHex"
     static let systemValue = "system"
     static let defaultHex = "9EE8C9"
     static let presets: [(name: String, hex: String)] = [
         ("薄荷", defaultHex), ("天蓝", "8ACBFF"), ("紫藤", "C4ACFF"),
         ("玫瑰", "FFACC8"), ("蜜桃", "FFBE98"), ("暖黄", "F4DC8A")
     ]
+
+    enum Source: String {
+        case preset, system, custom
+    }
+
+    static func source(for hex: String) -> Source {
+        if hex == systemValue { return .system }
+        return presets.contains { $0.hex == hex } ? .preset : .custom
+    }
 
     static func color(_ hex: String) -> Color {
         if hex == systemValue { return Color(nsColor: .controlAccentColor) }
