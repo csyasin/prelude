@@ -51,7 +51,7 @@ jobs:
 
       - name: Verify application configuration and architecture
         run: |
-          lipo -verify_arch arm64 dist/Prelude.app/Contents/MacOS/Prelude
+          xcrun lipo dist/Prelude.app/Contents/MacOS/Prelude -verify_arch arm64
           dist/Prelude.app/Contents/MacOS/Prelude --check-config Sources/Prelude/Resources/preluderc
 
       - name: Package DMG

@@ -183,7 +183,9 @@ Xcode 打开 `Package.swift`。`--check-config /path/preluderc` 仅校验后退�
 
 想先查看计划，可使用 `./scripts/release.py patch --dry-run`；它只读取本地数据，不修改文件、提交、标签或远端。真正发布时脚本会同步远端信息，检查工作区、分支和版本标签，拒绝重复版本与版本回退。远端分支领先或发生分叉时，先同步代码再发布。
 
-若 Git 推送失败，版本提交和标签留在本地，修复连接或权限后执行 `./scripts/release.py current` 继续推送。若 Actions 构建或上传失败，在 GitHub 重跑失败任务，构建号自动增加；上传中断留下的 Release 草稿可以继续完成。已发布的版本及资产保持不变，修改代码后用新版本重新发布。
+若 Git 推送失败，版本提交和标签留在本地，修复连接或权限后执行 `./scripts/release.py current` 继续推送。若 Actions 因临时网络或服务问题失败，在 GitHub 重跑失败任务，构建号自动增加；上传中断留下的 Release 草稿可以继续完成。
+
+若失败需要修改应用代码或工作流，先提交修复，再执行 `./scripts/release.py patch` 创建新版本标签。[重跑使用原任务的提交和引用](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)，不会读取分支上的新修复。已发布的版本及资产保持不变。
 
 本地需要指定版本时可运行 `APP_VERSION=0.1.0 APP_BUILD_NUMBER=12.1 ./scripts/build.sh`，只改构建产物中的版本信息。当前自动发布沿用 ad-hoc 签名，尚未进行 Developer ID 签名与 Apple 公证；下载到其他 Mac 后可能被系统安全检查拦截。若需要正式公证分发，应另外配置 Developer ID 证书、Apple 公证凭据及签名流程。GitHub 自动发布不会自动更新用户已安装的应用。
 
