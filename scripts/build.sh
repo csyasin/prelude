@@ -2,6 +2,19 @@
 set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
+APP_ENABLE_UPDATES="${APP_ENABLE_UPDATES:-0}"
+if [[ "$APP_ENABLE_UPDATES" != 0 && "$APP_ENABLE_UPDATES" != 1 ]]; then
+    echo "APP_ENABLE_UPDATES must be 0 (development) or 1 (distribution)." >&2
+    exit 2
+fi
+if [[ "$APP_ENABLE_UPDATES" == 1 ]]; then
+    python3 - <<'PY'
+import base64, plistlib
+info = plistlib.load(open('Info.plist', 'rb'))
+if len(base64.b64decode(info.get('SUPublicEDKey', ''), validate=True)) != 32:
+    raise SystemExit('Configure the update signing key with scripts/setup-updates.py first.')
+PY
+fi
 APP_VERSION="${APP_VERSION:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)}"
 if [[ ! "$APP_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
     echo "APP_VERSION must use X.Y.Z format without leading zeros." >&2
@@ -23,7 +36,7 @@ fi
 swift build -c release
 BIN_DIR="$(swift build -c release --show-bin-path)"
 APP_DIR="$PROJECT_DIR/dist/Prelude.app"
-mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
+mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources" "$APP_DIR/Contents/Frameworks"
 rm -f \
     "$APP_DIR/Contents/Resources/THIRD_PARTY_NOTICES.md" \
     "$APP_DIR/Contents/Resources/default.toml" \
@@ -37,7 +50,23 @@ cp "$PROJECT_DIR/Sources/Prelude/Resources/PreludeMenuTemplate.png" "$APP_DIR/Co
 cp "$PROJECT_DIR/Info.plist" "$APP_DIR/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" "$APP_DIR/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $APP_BUILD_NUMBER" "$APP_DIR/Contents/Info.plist"
+if [[ "$APP_ENABLE_UPDATES" == 1 ]]; then
+    /usr/libexec/PlistBuddy -c 'Set :PreludeUpdatesEnabled true' "$APP_DIR/Contents/Info.plist"
+else
+    /usr/libexec/PlistBuddy -c 'Set :PreludeUpdatesEnabled false' "$APP_DIR/Contents/Info.plist"
+fi
 cp "$PROJECT_DIR/Assets/Prelude.icns" "$APP_DIR/Contents/Resources/Prelude.icns"
-codesign --force --deep --sign - "$APP_DIR"
+cp "$PROJECT_DIR/THIRD_PARTY_NOTICES.md" "$APP_DIR/Contents/Resources/THIRD_PARTY_NOTICES.md"
+SPARKLE_FRAMEWORK="$APP_DIR/Contents/Frameworks/Sparkle.framework"
+rm -rf "$SPARKLE_FRAMEWORK"
+ditto "$PROJECT_DIR/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" "$SPARKLE_FRAMEWORK"
+# This app is not sandboxed; Sparkle's optional XPC services are not used.
+rm -rf "$SPARKLE_FRAMEWORK/Versions/B/XPCServices"
+codesign --force --sign - "$SPARKLE_FRAMEWORK/Versions/B/Autoupdate"
+codesign --force --sign - "$SPARKLE_FRAMEWORK/Versions/B/Updater.app"
+codesign --force --sign - "$SPARKLE_FRAMEWORK"
+codesign --force --sign - "$APP_DIR"
+codesign --verify --deep --strict "$APP_DIR"
 echo "Built: $APP_DIR"
 echo "Version: $APP_VERSION (build $APP_BUILD_NUMBER)"
+echo "Updates enabled: $APP_ENABLE_UPDATES"

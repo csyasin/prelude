@@ -158,6 +158,7 @@ class PublishScriptTests(unittest.TestCase):
         payload = b"test release artifact"
         (self.root / "dist/Prelude.dmg").write_bytes(payload)
         (self.root / "dist/Prelude.dmg.sha256").write_text(f"{hashlib.sha256(payload).hexdigest()}  Prelude.dmg\n")
+        (self.root / "dist/appcast.xml").write_text("<rss><channel/></rss>\n")
         self.log = self.root / "gh-calls.jsonl"
         fake_gh = self.root / "bin/gh"
         fake_gh.write_text("""#!/usr/bin/env python3
@@ -181,15 +182,16 @@ if action == 'upload' and os.environ.get('FAKE_UPLOAD_FAILURE') == '1':
         env = dict(self.env, FAKE_RELEASE_STATE=state, FAKE_UPLOAD_FAILURE="1" if upload_failure else "0")
         result = subprocess.run(["bash", "scripts/publish-release.sh", "v0.1.0"], cwd=self.root,
                                 env=env, text=True, capture_output=True)
-        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
         return result, calls
 
-    def test_new_release_attaches_both_verified_assets(self):
+    def test_new_release_attaches_artifacts_and_update_feed(self):
         result, calls = self.publish("missing")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([call[1] for call in calls], ["view", "create"])
         self.assertIn("dist/Prelude.dmg", calls[-1])
         self.assertIn("dist/Prelude.dmg.sha256", calls[-1])
+        self.assertIn("dist/appcast.xml", calls[-1])
         self.assertIn("--verify-tag", calls[-1])
 
     def test_draft_retry_uploads_before_publishing(self):
@@ -197,6 +199,7 @@ if action == 'upload' and os.environ.get('FAKE_UPLOAD_FAILURE') == '1':
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([call[1] for call in calls], ["view", "upload", "edit"])
         self.assertIn("--draft=false", calls[-1])
+        self.assertIn("dist/appcast.xml", calls[-2])
 
     def test_published_release_is_never_overwritten(self):
         result, calls = self.publish("false")
@@ -207,6 +210,18 @@ if action == 'upload' and os.environ.get('FAKE_UPLOAD_FAILURE') == '1':
         result, calls = self.publish("true", upload_failure=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual([call[1] for call in calls], ["view", "upload"])
+
+    def test_missing_update_feed_prevents_publication(self):
+        (self.root / "dist/appcast.xml").unlink()
+        result, calls = self.publish("missing")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(calls, [])
+
+    def test_corrupted_archive_prevents_publication(self):
+        (self.root / "dist/Prelude.dmg").write_bytes(b"corrupted")
+        result, calls = self.publish("missing")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":

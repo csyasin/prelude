@@ -123,7 +123,7 @@ subprocess.run(["open", "-g", "prelude://toast?" + query], check=True)
 
 ## 开发
 
-运行需要 macOS 14+；源码构建需要 Xcode 26+（包含 macOS 26 SDK），当前发布为 Apple Silicon。应用本身没有第三方包依赖，已移除 TOMLKit。
+运行需要 macOS 14+；源码构建需要 Xcode 26+（包含 macOS 26 SDK），当前发布为 Apple Silicon。应用内更新使用 Sparkle 2.10.0，由 SwiftPM 下载并校验；不再使用 TOMLKit。第三方许可证见 THIRD_PARTY_NOTICES.md，并随应用一起打包。
 
 ```sh
 swift test
@@ -135,7 +135,7 @@ Xcode 打开 `Package.swift`。`--check-config /path/preluderc` 仅校验后退�
 
 主要源码：`PreludeRC.swift` 解析 DSL；`Configuration.swift` 构造树和导航索引；`IslandView.swift` 绘制灵动岛和纵向按键列表；`OverlayController.swift` 负责刘海检测与顶部定位；`AppModel.swift` 管理输入/重载；`ActionRunner.swift` 执行 shell。
 
-本地 ad-hoc 签名，无 Developer ID 公证、自动更新。具体验证范围见 VALIDATION.md。
+本地 ad-hoc 签名，尚未进行 Developer ID 签名与 Apple 公证。开发构建默认关闭应用更新；GitHub 发布构建开启 Sparkle 更新。具体验证范围见 VALIDATION.md。
 
 ### DMG 打包与 GitHub 发布
 
@@ -150,13 +150,13 @@ Xcode 打开 `Package.swift`。`--check-config /path/preluderc` 仅校验后退�
 
 发布采用[语义版本号](https://semver.org/lang/zh-CN/)：修复问题递增 `patch`，功能迭代递增 `minor`，主版本迭代递增 `major`。`0.x` 表示初期开发阶段。你选择本次递增类型，`scripts/release.py` 自动更新 `Info.plist` 的产品版本，版本变化时提交 `chore: release vX.Y.Z`，创建对应标签，再原子推送当前分支和标签到 `origin`。
 
-`.github/workflows/release.yml` 收到标签后，校验标签与提交中的版本一致，使用 macOS 26 的 Apple Silicon runner 执行核心及发布脚本测试、Release 构建、架构与配置校验、DMG 打包，最后创建 GitHub Release 并上传 DMG 和 SHA-256 文件。仅支持正式 `vX.Y.Z` 标签；产品版本从标签写入应用包，「关于 Prelude」从应用包读取版本和构建号。
+`.github/workflows/release.yml` 收到标签后，校验标签与提交中的版本一致，使用 macOS 26 的 Apple Silicon runner 执行核心及发布脚本测试、Release 构建、架构与配置校验、DMG 打包、更新包签名和更新清单生成，最后创建 GitHub Release 并上传 DMG、SHA-256 文件和 `appcast.xml`。仅支持正式 `vX.Y.Z` 标签；产品版本从标签写入应用包，「关于 Prelude」从应用包读取版本和构建号。
 
 构建号 `CFBundleVersion` 由 CI 按「运行编号.重试编号」生成，例如第 12 次发布工作流首次尝试为 `12.1`，重跑为 `12.2`，下一次工作流为 `13.1`。[GitHub 编号规则](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts)。源文件中的构建号只是模板，不需要维护。直接本地构建默认使用「Git 提交数量.0」，同一提交重复构建保持相同编号；无 Git 历史的源码使用 `1.0`。如需复现特定版本，可通过 `APP_VERSION`、`APP_BUILD_NUMBER` 显式覆盖产物。
 
 首次启用：
 
-1. 在仓库 **Settings → Actions → General** 确认 GitHub Actions 已启用，并允许 `actions/checkout`。工作流已声明 `contents: write`，发布使用 GitHub 自动提供的 `GITHUB_TOKEN`，无需个人访问令牌或额外 Secrets。组织策略若限制工作流写权限，需要仓库管理员调整。
+1. 在仓库 **Settings → Actions → General** 确认 GitHub Actions 已启用，并允许 `actions/checkout`。工作流已声明 `contents: write`，上传使用 GitHub 自动提供的 `GITHUB_TOKEN`，无需个人访问令牌。更新签名需要一次性配置 `SPARKLE_PRIVATE_KEY`，见下方「应用内更新」。组织策略若限制工作流写权限，需要仓库管理员调整。
 2. 确认要发布的应用代码和发布脚本已保存，提交本次改动。发布命令要求工作区干净，并使用 Git 当前分支；需要 macOS、Git 和 Python 3。首次准备可以执行：
 
    ```sh
@@ -164,7 +164,7 @@ Xcode 打开 `Package.swift`。`--check-config /path/preluderc` 仅校验后退�
    git commit -m "feat: prepare initial release"
    ```
 
-3. 发布当前已配置的 `0.1.0`：
+3. 发布 `Info.plist` 中当前已配置的版本（仅适用于该版本尚未发布时）：
 
    ```sh
    ./scripts/release.py current
@@ -187,7 +187,37 @@ Xcode 打开 `Package.swift`。`--check-config /path/preluderc` 仅校验后退�
 
 若失败需要修改应用代码或工作流，先提交修复，再执行 `./scripts/release.py patch` 创建新版本标签。[重跑使用原任务的提交和引用](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)，不会读取分支上的新修复。已发布的版本及资产保持不变。
 
-本地需要指定版本时可运行 `APP_VERSION=0.1.0 APP_BUILD_NUMBER=12.1 ./scripts/build.sh`，只改构建产物中的版本信息。当前自动发布沿用 ad-hoc 签名，尚未进行 Developer ID 签名与 Apple 公证；下载到其他 Mac 后可能被系统安全检查拦截。若需要正式公证分发，应另外配置 Developer ID 证书、Apple 公证凭据及签名流程。GitHub 自动发布不会自动更新用户已安装的应用。
+本地需要指定版本时可运行 `APP_VERSION=0.1.0 APP_BUILD_NUMBER=12.1 ./scripts/build.sh`，只改构建产物中的版本信息。当前自动发布沿用 ad-hoc 签名，尚未进行 Developer ID 签名与 Apple 公证；下载到其他 Mac 后可能被系统安全检查拦截。若需要正式公证分发，应另外配置 Developer ID 证书、Apple 公证凭据及签名流程。
+
+### 应用内更新
+
+正式发布版支持菜单栏「检查更新…」，偏好设置中的「应用更新」显示当前版本、上次检查时间，以及「自动检查更新」开关。默认每天在后台检查；发现更新后显示更新说明，由用户点击安装并重新启动。不会静默安装，也不会为检查更新打开偏好设置。菜单栏在发现新版本时显示「更新到 X.Y.Z…」。关闭自动检查后仍可手动检查。
+
+首次需要手动安装一个包含 Sparkle 的新版，并将应用从 DMG 拖到 `/Applications` 等可写的固定位置；早期不含更新功能的版本无法自行升级到这个版本。更新只替换应用包，`~/.config/prelude/preluderc`、主题色及快捷键偏好保持原位置。开发构建默认不检查更新，以免本地构建号与 CI 构建号混用。
+
+发布所需的更新公钥保存在 `Info.plist` 的 `SUPublicEDKey`，私钥保存在当前 Mac 登录钥匙串的 Sparkle 服务中，账号为 `dev.yasin.prelude`。GitHub Actions 使用仓库 Secret `SPARKLE_PRIVATE_KEY` 签名。首次在保存这个私钥的 Mac 上运行：
+
+```sh
+brew install gh
+gh auth login
+./scripts/setup-updates.py --github
+```
+
+设置脚本核对钥匙串中的公钥与项目一致，临时导出私钥并直接交给 GitHub CLI，上传后删除临时文件，不在终端打印私钥。使用仓库 `csyasin/prelude` 的管理账号登录 GitHub CLI。迁移电脑时需备份并恢复原更新密钥，不能直接换一个新公钥，否则已安装的应用无法验证后续更新。备份可以用 Sparkle 的 `generate_keys --account dev.yasin.prelude -x <安全备份文件路径>`；工具在 `.build/artifacts/sparkle/Sparkle/bin/` 中。
+
+macOS 可能弹出钥匙串授权窗口，询问是否允许 `generate_keys`、`generate_appcast` 或 `sign_update` 读取上述更新密钥。这把私钥用于给更新包和更新清单签名，应用内置的公钥用于核验发布者；GitHub Actions 也需要同一把私钥。确认是你主动运行这些脚本后，可以允许此次访问。如需密码，请在系统窗口自行输入。拒绝只会取消本次操作，不影响已安装应用，也不要因此重新生成密钥。
+
+完成这次配置并提交代码后，继续使用 `./scripts/release.py patch`、`minor`、`major` 发布。Actions 开启 `APP_ENABLE_UPDATES=1`，生成带 EdDSA 签名的 DMG 和已签名的 `appcast.xml`，同时验证签名、公钥、版本、文件大小及固定下载地址。缺少私钥或密钥不匹配时停止发布。应用从 `https://github.com/csyasin/prelude/releases/latest/download/appcast.xml` 读取更新清单，清单内使用每个标签对应的固定 DMG 地址，不会把某个版本的签名与另一个版本的下载包混用。无需额外服务器或 GitHub Pages。
+
+如需本地模拟正式构建并生成更新清单，指定产品版本和递增的正式构建号：
+
+```sh
+APP_ENABLE_UPDATES=1 APP_VERSION=0.1.2 APP_BUILD_NUMBER=100.1 ./scripts/build.sh
+./scripts/package-dmg.sh
+./scripts/generate-appcast.py v0.1.2
+```
+
+本地签名默认使用上述钥匙串账号；CI 从 Secret 读取私钥，通过标准输入传给 Sparkle，私钥不进入命令参数或产物。Sparkle 更新签名与 Apple Developer ID 签名独立；此流程尚未替代 Apple 公证。
 
 ### 开机自启
 

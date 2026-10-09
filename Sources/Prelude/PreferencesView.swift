@@ -4,6 +4,7 @@ import PreludeCore
 
 struct PreferencesView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var updater: AppUpdater
     @StateObject private var launchAtLogin = LaunchAtLogin()
     @StateObject private var customColorPicker = CustomColorPicker()
     @AppStorage(ThemeColor.preferenceKey) private var accentHex = ThemeColor.defaultHex
@@ -150,6 +151,40 @@ struct PreferencesView: View {
                     Spacer(minLength: 0)
                 }
             }
+            VStack(alignment: .leading, spacing: 12) {
+                sectionTitle("应用更新")
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 14) {
+                        rowIcon("arrow.triangle.2.circlepath")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(updater.versionDescription).font(.system(size: 13, weight: .medium))
+                            Text(updateStatus).font(.system(size: 11)).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("检查更新…") { updater.checkForUpdates() }
+                            .disabled(!updater.canCheckForUpdates)
+                    }
+                    Divider().padding(.leading, 46)
+                    HStack(spacing: 14) {
+                        rowIcon("clock")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("自动检查更新").font(.system(size: 13, weight: .medium))
+                            Text("每天在后台检查，安装更新前会征求你的同意")
+                                .font(.system(size: 11)).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Toggle("自动检查更新", isOn: Binding(
+                            get: { updater.automaticallyChecksForUpdates },
+                            set: { updater.setAutomaticallyChecksForUpdates($0) }
+                        ))
+                        .labelsHidden().toggleStyle(.switch).tint(accent)
+                        .disabled(updater.unavailableReason != nil)
+                        .accessibilityLabel("自动检查更新")
+                    }
+                }
+                .padding(18)
+                .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 18))
+            }
         }
         .padding(30)
         .frame(width: 680)
@@ -167,6 +202,15 @@ struct PreferencesView: View {
             get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }
         )) { Button("好", role: .cancel) { errorMessage = nil } }
         message: { Text(errorMessage ?? "") }
+    }
+
+    private var updateStatus: String {
+        if let reason = updater.unavailableReason { return reason }
+        if let version = updater.availableVersion { return "发现新版本 \(version)" }
+        if let date = updater.lastUpdateCheckDate {
+            return "上次检查：\(date.formatted(date: .abbreviated, time: .shortened))"
+        }
+        return "尚未检查更新"
     }
 
     private func sectionTitle(_ title: String) -> some View {

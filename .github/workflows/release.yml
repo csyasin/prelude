@@ -15,6 +15,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write
+    env:
+      APP_ENABLE_UPDATES: '1'
     steps:
       - name: Check out release tag
         uses: actions/checkout@v6
@@ -46,6 +48,15 @@ jobs:
           swift test
           python3 -B -m unittest discover -s Tests/ReleaseScripts
 
+      - name: Check update signing configuration
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$SPARKLE_PRIVATE_KEY" ]]; then
+            echo "Configure SPARKLE_PRIVATE_KEY with scripts/setup-updates.py --github before releasing." >&2
+            exit 1
+          fi
+
       - name: Build application
         run: ./scripts/build.sh
 
@@ -56,6 +67,11 @@ jobs:
 
       - name: Package DMG
         run: ./scripts/package-dmg.sh
+
+      - name: Generate signed update feed
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: ./scripts/generate-appcast.py "$GITHUB_REF_NAME"
 
       - name: Publish GitHub Release
         env:

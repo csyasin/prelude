@@ -1,20 +1,65 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>CFBundleName</key><string>Prelude</string>
-<key>CFBundleDisplayName</key><string>Prelude</string>
-<key>CFBundleIdentifier</key><string>dev.yasin.prelude</string>
-<key>CFBundleExecutable</key><string>Prelude</string>
-<key>CFBundleIconFile</key><string>Prelude</string>
-<key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.1</string>
-<key>CFBundleVersion</key><string>1</string>
-<key>LSMinimumSystemVersion</key><string>14.0</string>
-<key>CFBundleURLTypes</key><array><dict>
-<key>CFBundleURLName</key><string>dev.yasin.prelude.toast</string>
-<key>CFBundleURLSchemes</key><array><string>prelude</string></array>
-<key>CFBundleTypeRole</key><string>Viewer</string>
-</dict></array>
-<key>LSUIElement</key><true/>
-<key>NSHighResolutionCapable</key><true/>
-</dict></plist>
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>zh-Hans</string>
+	<key>CFBundleDisplayName</key>
+	<string>Prelude</string>
+	<key>CFBundleExecutable</key>
+	<string>Prelude</string>
+	<key>CFBundleIconFile</key>
+	<string>Prelude</string>
+	<key>CFBundleIdentifier</key>
+	<string>dev.yasin.prelude</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>zh-Hans</string>
+	</array>
+	<key>CFBundleName</key>
+	<string>Prelude</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.1</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>dev.yasin.prelude.toast</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>prelude</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>PreludeUpdatesEnabled</key>
+	<false/>
+	<key>SUAllowsAutomaticUpdates</key>
+	<false/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUEnableSystemProfiling</key>
+	<false/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/csyasin/prelude/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>8pNngJ6ITC1kBYmSgjM/yOd39Uu5Yh2v46EJ8CoAiKk=</string>
+	<key>SURequireSignedFeed</key>
+	<true/>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
+</dict>
+</plist>

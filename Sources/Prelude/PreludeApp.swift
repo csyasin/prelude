@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import Combine
 import SwiftUI
 import PreludeCore
 
@@ -32,11 +33,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: AppModel!
     private var status: NSStatusItem!
     private var preferencesWindow: NSWindowController?
+    private var updater: AppUpdater!
+    private var updateMenuItems: [NSMenuItem] = []
+    private var updateMenuObservation: AnyCancellable?
     private var pendingURLs: [URL] = []
     private var receivedURL = false
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         model = AppModel()
+        updater = AppUpdater()
+        updater.onShowUpdateUI = { [weak self] in self?.model.dismiss() }
         model.onShowPreferences = { [weak self] in self?.showPreferences() }
         configureMainMenu()
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -48,9 +54,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         addItem(to: menu, title: "重新载入配置", action: #selector(reload), key: "r")
         addItem(to: menu, title: "配置状态…", action: #selector(configStatus))
         menu.addItem(.separator())
+        addUpdateItem(to: menu)
         addItem(to: menu, title: "关于 Prelude", action: #selector(about))
         addItem(to: menu, title: "退出 Prelude", action: #selector(quit), key: "q")
         status.menu = menu
+        updateMenuObservation = updater.$availableVersion.sink { [weak self] version in
+            self?.updateMenuItems.forEach { $0.title = version.map { "更新到 \($0)…" } ?? "检查更新…" }
+        }
         model.start()
         let urls = pendingURLs
         pendingURLs.removeAll()
@@ -83,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         let appMenu = NSMenu(title: "Prelude")
         addItem(to: appMenu, title: "关于 Prelude", action: #selector(about))
+        addUpdateItem(to: appMenu)
         appMenu.addItem(.separator())
         addItem(to: appMenu, title: "偏好设置…", action: #selector(showPreferences), key: ",")
         appMenu.addItem(.separator())
@@ -117,6 +128,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = menu
         NSApp.windowsMenu = windowMenu
     }
+    private func addUpdateItem(to menu: NSMenu) {
+        let item = NSMenuItem(title: "检查更新…", action: #selector(checkForUpdates), keyEquivalent: "")
+        item.target = self
+        menu.addItem(item)
+        updateMenuItems.append(item)
+    }
     private func applyIcons() {
         if let appURL = Bundle.main.url(forResource: "Prelude", withExtension: "icns"),
            let appIcon = NSImage(contentsOf: appURL) {
@@ -139,7 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func showPreferences() {
         model.dismiss()
         if preferencesWindow == nil {
-            let window = NSWindow(contentViewController: NSHostingController(rootView: PreferencesView(model: model)))
+            let window = NSWindow(contentViewController: NSHostingController(rootView: PreferencesView(model: model, updater: updater)))
             window.title = "Prelude Settings"
             window.styleMask = [.titled, .closable, .miniaturizable]
             window.isRestorable = false
@@ -170,4 +187,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.runModal()
     }
     @objc private func quit() { NSApp.terminate(nil) }
+    @objc private func checkForUpdates() { updater.checkForUpdates() }
+}
+
+extension AppDelegate: NSMenuItemValidation {
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        menuItem.action == #selector(checkForUpdates) ? updater.canCheckForUpdates : true
+    }
 }
